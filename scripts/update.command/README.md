@@ -43,7 +43,7 @@ update.command -t
 update.command --unattended
 ```
 
-无人值守模式会跳过脚本自述确认、自动执行所有更新项，并在 [**Homebrew**](https://brew.sh/) `Do you want to proceed with the upgrade? [y/n]` 这类已知确认点定点输入 `y`。脚本不会要求预先输入管理员密码，也不会保存或保活密码凭证。
+无人值守模式会跳过脚本自述确认、自动执行所有更新项，并在 [**Homebrew**](https://brew.sh/) `Do you want to proceed with the upgrade? [y/n]` 这类已知确认点定点输入 `y`。Homebrew 下载会全局测量 IPv4 / IPv6 速度，按实测带宽设置低速阈值，运行中持续低速会自动换线；Homebrew 隐藏 curl 进度条时，脚本每 `20` 秒输出一次下载缓存增长心跳。脚本不会要求预先输入管理员密码，也不会保存或保活密码凭证。
 
 需要管理员权限的命令在无人值守模式下统一使用 `sudo -n`：如果当前已有可用的 sudo 缓存或精确的 `NOPASSWD` 授权，命令可以执行；否则立即失败并跳过该提权项，继续后续更新，绝不会卡在密码提示。脚本不会自动修改 `sudoers`。
 
@@ -91,6 +91,7 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
   - 容错处理：`brew update` 遇到 `formulae.brew.sh/api` 或 `.jws.json` 下载失败时，自动使用 `HOMEBREW_NO_INSTALL_FROM_API=1 brew update` 降级重试
   - 信任处理：全局 `brew upgrade` 前会先处理脚本维护的第三方 tap，避免 Homebrew 扫描阶段提前跳过 `fvm` 等非官方 formula
   - 托管处理：`-t` 模式下会对 `brew upgrade` / `brew upgrade --cask` 的 `[y/n]` 确认自动输入 `y`
+  - 网络处理：`brew update`、全局 formula / cask 升级和逐项 formula / cask 升级统一复用 IPv4 / IPv6 自适应下载策略；动态低速阈值避免误杀慢线路，最终兜底仍保留停滞退出边界
   - `brew cask`：由 `BREW_CASKS` 自动生成逐项升级入口
   - `brew formula`：由 `BREW_FORMULAE` 自动生成逐项升级入口
   - `github-store`：升级前确认 `OpenHub-Store/tap`，升级后对 `$APPLICATIONS_DIR/GitHub-Store.app` 执行 `xattr -dr com.apple.quarantine`
@@ -280,6 +281,24 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 - [**openjdk**](https://openjdk.org/) / [**openjdk@17**](https://openjdk.org/projects/jdk/17/)：升级后输出 Java 配置提示
 - [**fzf**](https://github.com/junegunn/fzf)：升级后刷新 `fzf` shell 配置
 
+### 4.3、Homebrew 全局自适应下载
+
+`update.command` 对所有由 Homebrew `curl` 执行的更新下载使用同一组无人值守策略，不再只针对某个 cask 或 formula。
+
+1、首次进入 Homebrew 下载前，使用 Homebrew 官方 API 文件对 IPv4 和 IPv6 各做一次最多 `1 MiB`、最长 `8` 秒的小流量测速。
+
+2、正式下载先使用测速更快的协议；每条线路的低速阈值取该线路实测速度的四分之一，并限制在 `8 KiB/s` 到 `128 KiB/s` 之间。连续 `30` 秒低于动态阈值时，当前 Homebrew 命令停止该线路并自动切换另一协议重试。
+
+3、Homebrew 通过日志管道运行时会隐藏 curl 原生进度条；脚本每 `20` 秒检查一次未完成下载缓存，有增长时输出最近增长量，没有增长时明确提示正在等待网络响应。
+
+4、某条线路执行成功后，它会成为本轮后续 Homebrew 下载的首选，避免每个包重复猜测。
+
+5、IPv4 / IPv6 都触发网络失败时，脚本回到初始探测中较快的协议做最后一次宽松尝试。最终尝试不再关闭保护或追加三轮 curl 重试；连续 `60` 秒低于 `1 KiB/s` 就失败返回，既允许慢速续传，也不会无限静默卡住。
+
+6、策略通过系统临时目录里的 `HOMEBREW_CURLRC` 生效；脚本退出时删除临时文件并恢复原有环境，不修改 `~/.curlrc`、`~/.zshrc`、`~/.zprofile` 或 macOS 系统代理。
+
+边界：这个全局策略覆盖脚本内所有可由 Homebrew `curl` 控制的下载。`softwareupdate`、Git tap / `git pull`、`npm`、`gem`、`pod`、`dart` 和 `flutter` 拥有各自的下载器，Homebrew 的 `HOMEBREW_CURLRC` 不会伪装成对它们生效。
+
 ## 五、更新顺序总览 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 `update.command` 当前按以下顺序逐项询问：
@@ -342,6 +361,8 @@ dart pub cache repair
 
 普通模式会在执行每个大项前单独询问。无人值守模式自动执行各项，但提权命令只在 `sudo -n` 可用时执行，否则记录跳过后继续。
 
+Homebrew 换线会重新执行当前幂等的 `brew update` / `brew upgrade` 命令。Homebrew 负责管理下载缓存和已完成项；脚本不手工删除缓存，也不回滚已完成的包。
+
 ## 七、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 运行日志固定写入：
@@ -391,10 +412,18 @@ flowchart TD
 flowchart TD
     A[install.command: BREW_CASKS] --> B[update.command: BREW_CASKS]
     C[install.command: BREW_FORMULAE] --> D[update.command: BREW_FORMULAE]
-    B --> E[brew upgrade --cask]
-    D --> F[brew upgrade]
-    E --> G[README.md 同步记录]
-    F --> G
+    B --> E[Homebrew 全局自适应下载]
+    D --> E
+    E --> F[IPv4 / IPv6 测速并选择快线]
+    F --> G{30 秒持续低于动态阈值}
+    G -->|是| H[换线后重试当前 brew 命令]
+    G -->|否| I[继续当前下载]
+    H --> J{双线路是否都失败}
+    J -->|是| K[宽松阈值做最后一次有界续传]
+    J -->|否| L[成功线路成为后续首选]
+    I --> L
+    K --> L
+    L --> M[README.md 同步记录]
 ```
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

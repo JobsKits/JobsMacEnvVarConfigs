@@ -112,7 +112,7 @@ tts() { _jobs_run_scripts_command "tts" "$@"; }
 simios() { _jobs_run_scripts_command simios "$@"; }
 # pods：本地 CocoaPods Pod 编译 / podspec lint 自检。
 pods() { _jobs_run_scripts_command pods "$@"; }
-# clean：清空 zsh 历史、zsh_sessions 残留，并在检测到 Homebrew 时顺手执行 brew cleanup。
+# clean：清空 zsh 历史、zsh_sessions，将 Spotlight 中不可打开的构建 App 移入废纸篓，并执行 brew cleanup。
 clean() { _jobs_run_scripts_command clean "$@"; }
 # clr：清空 Google Chrome 下载记录，不删除真实下载文件。
 clr() { _jobs_run_scripts_command clr "$@"; }

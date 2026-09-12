@@ -246,7 +246,7 @@ build_menu_items() {
 录制 / GIF	gif	终端 / 全屏录制并导出 GIF / MP4	script	gif.command
 iOS 模拟器	simios	检测 Xcode 环境并下载 / 补齐 iOS Simulator Runtime	script	simios.command
 本地 Pod 自检	pods	检查本地 CocoaPods Pod 编译与 podspec lint 结果	script	pods.command
-终端清理	clean	清空终端历史、zsh_sessions，并执行 brew cleanup	script	clean.command
+终端清理	clean	清空终端历史、zsh_sessions，将 Spotlight 失效构建 App 移入废纸篓，并执行 brew cleanup	script	clean.command
 Chrome 下载记录	clr	清空 Google Chrome 下载记录，不删除真实下载文件	script	clr.command
 App 打开修复	dq	解决新装 App 无法打开、被系统建议移到废纸篓的问题（清理 macOS quarantine 隔离标记）	script	dq.command
 目录共享	df	dufs + Caddy 临时开放本地目录给局域网浏览器访问	script	df.command

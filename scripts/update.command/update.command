@@ -24,6 +24,27 @@ SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
 LOG_FILE="/tmp/${SCRIPT_BASENAME}.log"
 JOBS_UPDATE_TRUST_MODE=0
+readonly JOBS_UPDATE_NETWORK_PROBE_URL="https://formulae.brew.sh/api/formula.jws.json"
+readonly JOBS_UPDATE_NETWORK_PROBE_BYTES=1048576
+readonly JOBS_UPDATE_NETWORK_PROBE_TIMEOUT_SECONDS=8
+readonly JOBS_UPDATE_MAX_LOW_SPEED_LIMIT_BPS=131072
+readonly JOBS_UPDATE_MIN_LOW_SPEED_LIMIT_BPS=8192
+readonly JOBS_UPDATE_FINAL_LOW_SPEED_LIMIT_BPS=1024
+readonly JOBS_UPDATE_LOW_SPEED_SECONDS=30
+readonly JOBS_UPDATE_FINAL_LOW_SPEED_SECONDS=60
+readonly JOBS_UPDATE_PROGRESS_INTERVAL_SECONDS=20
+JOBS_UPDATE_NETWORK_READY=0
+JOBS_UPDATE_PREFERRED_IP_FAMILY="ipv4"
+JOBS_UPDATE_SECONDARY_IP_FAMILY="ipv6"
+JOBS_UPDATE_IPV4_PROBE_SPEED=0
+JOBS_UPDATE_IPV6_PROBE_SPEED=0
+JOBS_UPDATE_ACTIVE_LOW_SPEED_LIMIT_BPS=0
+JOBS_UPDATE_ACTIVE_LOW_SPEED_SECONDS=0
+JOBS_UPDATE_BREW_CURLRC=""
+JOBS_UPDATE_LAST_BREW_OUTPUT_FILE=""
+JOBS_UPDATE_PROGRESS_MONITOR_PID=""
+JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC=""
+JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC_WAS_SET=0
 
 
 # ---------- 全局配置：必须与 install.command 保持同源 ----------
@@ -312,60 +333,373 @@ jobs_update_run_cmd_with_yes() {
 
   return $exit_code
 }
-# 执行 brew update，遇到 Homebrew API 下载失败时自动降级为本地 tap 更新。
-jobs_update_run_brew_update() {
-  local output_file=""
-  output_file="$(mktemp -t jobs_update_brew_update.XXXXXX)"
+# 返回指定 IP 协议对应的 curl 参数。
+jobs_update_ip_family_curl_flag() {
+  case "$1" in
+    ipv4) print -r -- "--ipv4" ;;
+    ipv6) print -r -- "--ipv6" ;;
+    *) return 1 ;;
+  esac
+}
+# 使用小流量分段下载测量指定 IP 协议的实时速度。
+jobs_update_measure_ip_family_speed() {
+  local family="$1"
+  local family_flag=""
+  local range_end=$((JOBS_UPDATE_NETWORK_PROBE_BYTES - 1))
+  local speed=""
 
-  note_echo "brew update（更新软件列表）"
-  debug_echo "执行命令：brew update"
+  family_flag="$(jobs_update_ip_family_curl_flag "$family")" || {
+    print -r -- "0"
+    return 0
+  }
+  speed="$(/usr/bin/curl "$family_flag" \
+    --location \
+    --silent \
+    --fail \
+    --output /dev/null \
+    --range "0-${range_end}" \
+    --connect-timeout 5 \
+    --max-time "$JOBS_UPDATE_NETWORK_PROBE_TIMEOUT_SECONDS" \
+    --write-out '%{speed_download}' \
+    "$JOBS_UPDATE_NETWORK_PROBE_URL" 2>/dev/null || true)"
+  speed="${speed%%.*}"
+  [[ "$speed" == <-> ]] || speed=0
+  print -r -- "$speed"
+}
+# 把字节每秒转换成便于日志阅读的 KiB/s。
+jobs_update_format_download_speed() {
+  local speed="${1:-0}"
 
-  brew update 2>&1 | tee -a "$LOG_FILE" | tee "$output_file"
-  local exit_code=${pipestatus[1]}
+  if [[ "$speed" != <-> ]] || (( speed <= 0 )); then
+    print -r -- "不可用"
+    return 0
+  fi
+  print -r -- "$((speed / 1024)) KiB/s"
+}
+# 返回指定 IP 协议的测速结果。
+jobs_update_probe_speed_for_family() {
+  case "$1" in
+    ipv4) print -r -- "$JOBS_UPDATE_IPV4_PROBE_SPEED" ;;
+    ipv6) print -r -- "$JOBS_UPDATE_IPV6_PROBE_SPEED" ;;
+    *) print -r -- "0" ;;
+  esac
+}
+# 按实测带宽计算低速阈值，避免慢线路被固定阈值误判为断线。
+jobs_update_adaptive_low_speed_limit_for_family() {
+  local speed=""
+  local limit=0
+
+  speed="$(jobs_update_probe_speed_for_family "$1")"
+  [[ "$speed" == <-> ]] || speed=0
+  if (( speed > 0 )); then
+    limit=$((speed / 4))
+  fi
+  (( limit < JOBS_UPDATE_MIN_LOW_SPEED_LIMIT_BPS )) && limit=$JOBS_UPDATE_MIN_LOW_SPEED_LIMIT_BPS
+  (( limit > JOBS_UPDATE_MAX_LOW_SPEED_LIMIT_BPS )) && limit=$JOBS_UPDATE_MAX_LOW_SPEED_LIMIT_BPS
+  print -r -- "$limit"
+}
+# 写入仅供本轮 update 使用的 Homebrew curl 配置。
+jobs_update_write_brew_curlrc() {
+  local family="$1"
+  local guard_mode="${2:-adaptive}"
+  local family_option=""
+  local speed_limit=0
+  local speed_seconds=0
+
+  [[ -n "$JOBS_UPDATE_BREW_CURLRC" ]] || return 1
+  family_option="$(jobs_update_ip_family_curl_flag "$family")" || return 1
+  case "$guard_mode" in
+    adaptive)
+      speed_limit="$(jobs_update_adaptive_low_speed_limit_for_family "$family")"
+      speed_seconds=$JOBS_UPDATE_LOW_SPEED_SECONDS
+      ;;
+    final)
+      speed_limit=$JOBS_UPDATE_FINAL_LOW_SPEED_LIMIT_BPS
+      speed_seconds=$JOBS_UPDATE_FINAL_LOW_SPEED_SECONDS
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  JOBS_UPDATE_ACTIVE_LOW_SPEED_LIMIT_BPS=$speed_limit
+  JOBS_UPDATE_ACTIVE_LOW_SPEED_SECONDS=$speed_seconds
+
+  {
+    if (( JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC_WAS_SET == 1 )); then
+      if [[ "$JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC" == /* && -f "$JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC" ]]; then
+        print -r -- "config = \"${JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC}\""
+      elif [[ -f "${HOME}/.curlrc" ]]; then
+        print -r -- "config = \"${HOME}/.curlrc\""
+      fi
+    fi
+    print -r -- "$family_option"
+    print -r -- "--connect-timeout 10"
+    print -r -- "--speed-limit ${speed_limit}"
+    print -r -- "--speed-time ${speed_seconds}"
+  } > "$JOBS_UPDATE_BREW_CURLRC"
+}
+# 选择探测速度更快的 IP 协议，并让后续 Homebrew 下载复用该选择。
+jobs_update_select_preferred_ip_family() {
+  JOBS_UPDATE_IPV4_PROBE_SPEED="$(jobs_update_measure_ip_family_speed ipv4)"
+  JOBS_UPDATE_IPV6_PROBE_SPEED="$(jobs_update_measure_ip_family_speed ipv6)"
+
+  info_echo "Homebrew 下载线路探测：IPv4=$(jobs_update_format_download_speed "$JOBS_UPDATE_IPV4_PROBE_SPEED")，IPv6=$(jobs_update_format_download_speed "$JOBS_UPDATE_IPV6_PROBE_SPEED")"
+  if (( JOBS_UPDATE_IPV6_PROBE_SPEED > JOBS_UPDATE_IPV4_PROBE_SPEED )); then
+    JOBS_UPDATE_PREFERRED_IP_FAMILY="ipv6"
+    JOBS_UPDATE_SECONDARY_IP_FAMILY="ipv4"
+  else
+    JOBS_UPDATE_PREFERRED_IP_FAMILY="ipv4"
+    JOBS_UPDATE_SECONDARY_IP_FAMILY="ipv6"
+  fi
+
+  if (( JOBS_UPDATE_IPV4_PROBE_SPEED == 0 && JOBS_UPDATE_IPV6_PROBE_SPEED == 0 )); then
+    warn_echo "IPv4 / IPv6 探测均未获得有效速度，先从 IPv4 开始；正式下载失败后仍会自动切换。"
+  else
+    success_echo "Homebrew 下载首选线路：${JOBS_UPDATE_PREFERRED_IP_FAMILY}"
+  fi
+}
+# 初始化整轮 update 共用的 Homebrew 自适应下载策略。
+jobs_update_ensure_network_strategy() {
+  if (( JOBS_UPDATE_NETWORK_READY == 1 )); then
+    return 0
+  fi
+  if [[ ! -x /usr/bin/curl ]]; then
+    warn_echo "未找到 /usr/bin/curl，Homebrew 下载将沿用默认网络策略。"
+    return 1
+  fi
+
+  if (( ${+HOMEBREW_CURLRC} )); then
+    JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC_WAS_SET=1
+    JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC="$HOMEBREW_CURLRC"
+  fi
+  JOBS_UPDATE_BREW_CURLRC="$(mktemp -t jobs_update_homebrew_curlrc.XXXXXX)" || return 1
+  jobs_update_select_preferred_ip_family
+  jobs_update_write_brew_curlrc "$JOBS_UPDATE_PREFERRED_IP_FAMILY" adaptive || return 1
+  export HOMEBREW_CURLRC="$JOBS_UPDATE_BREW_CURLRC"
+  JOBS_UPDATE_NETWORK_READY=1
+  note_echo "已启用全局 Homebrew 自适应下载：低速阈值会按线路实测速度自动收敛，停滞时切换 IPv4 / IPv6。"
+}
+# 清理临时网络配置，并恢复用户原有的 Homebrew curl 设置。
+jobs_update_cleanup_network_strategy() {
+  if (( JOBS_UPDATE_NETWORK_READY != 1 )) && [[ -z "$JOBS_UPDATE_BREW_CURLRC" && -z "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]]; then
+    return 0
+  fi
+  jobs_update_stop_brew_progress_monitor
+  if [[ -n "$JOBS_UPDATE_BREW_CURLRC" && -f "$JOBS_UPDATE_BREW_CURLRC" ]]; then
+    rm -f "$JOBS_UPDATE_BREW_CURLRC"
+  fi
+  if [[ -n "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" && -f "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]]; then
+    rm -f "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+  fi
+  if (( JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC_WAS_SET == 1 )); then
+    export HOMEBREW_CURLRC="$JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC"
+  else
+    unset HOMEBREW_CURLRC
+  fi
+  JOBS_UPDATE_NETWORK_READY=0
+}
+# 更新首选 IP 协议，并重写后续 Homebrew 下载使用的速度守卫。
+jobs_update_prefer_ip_family() {
+  local family="$1"
+
+  JOBS_UPDATE_PREFERRED_IP_FAMILY="$family"
+  if [[ "$family" == "ipv4" ]]; then
+    JOBS_UPDATE_SECONDARY_IP_FAMILY="ipv6"
+  else
+    JOBS_UPDATE_SECONDARY_IP_FAMILY="ipv4"
+  fi
+  jobs_update_write_brew_curlrc "$family" adaptive
+}
+# 汇总 Homebrew 未完成下载缓存的当前字节数。
+jobs_update_homebrew_incomplete_bytes() {
+  local cache_dir="${HOME}/Library/Caches/Homebrew/downloads"
+  local file=""
+  local size=0
+  local total=0
+
+  [[ -d "$cache_dir" ]] || {
+    print -r -- "0"
+    return 0
+  }
+  while IFS= read -r -d '' file; do
+    size="$(stat -f '%z' "$file" 2>/dev/null || print -r -- "0")"
+    [[ "$size" == <-> ]] || size=0
+    total=$((total + size))
+  done < <(find "$cache_dir" -type f -name '*.incomplete' -print0 2>/dev/null)
+  print -r -- "$total"
+}
+# 把字节数转换成便于进度日志阅读的大小。
+jobs_update_format_download_bytes() {
+  local bytes="${1:-0}"
+
+  [[ "$bytes" == <-> ]] || bytes=0
+  if (( bytes >= 1048576 )); then
+    print -r -- "$((bytes / 1048576)) MiB"
+  elif (( bytes >= 1024 )); then
+    print -r -- "$((bytes / 1024)) KiB"
+  else
+    print -r -- "${bytes} B"
+  fi
+}
+# 在 Homebrew 隐藏 curl 进度条时输出缓存增长心跳。
+jobs_update_monitor_brew_progress() {
+  local desc="$1"
+  local family="$2"
+  local previous_bytes=""
+  local current_bytes=""
+  local delta_bytes=0
+
+  previous_bytes="$(jobs_update_homebrew_incomplete_bytes)"
+  while true; do
+    sleep "$JOBS_UPDATE_PROGRESS_INTERVAL_SECONDS"
+    current_bytes="$(jobs_update_homebrew_incomplete_bytes)"
+    if (( current_bytes > previous_bytes )); then
+      delta_bytes=$((current_bytes - previous_bytes))
+      info_echo "${desc}（${family}）仍在下载：最近增加 $(jobs_update_format_download_bytes "$delta_bytes")，未完成缓存共 $(jobs_update_format_download_bytes "$current_bytes")。"
+    else
+      gray_echo "${desc}（${family}）仍在执行，暂未观察到下载缓存增长；若持续低于阈值将自动超时。"
+    fi
+    previous_bytes=$current_bytes
+  done
+}
+# 启动单个 Homebrew 命令对应的进度心跳。
+jobs_update_start_brew_progress_monitor() {
+  jobs_update_stop_brew_progress_monitor
+  jobs_update_monitor_brew_progress "$1" "$2" &
+  JOBS_UPDATE_PROGRESS_MONITOR_PID=$!
+}
+# 停止当前 Homebrew 进度心跳并回收后台进程。
+jobs_update_stop_brew_progress_monitor() {
+  [[ -n "$JOBS_UPDATE_PROGRESS_MONITOR_PID" ]] || return 0
+  kill "$JOBS_UPDATE_PROGRESS_MONITOR_PID" 2>/dev/null || true
+  wait "$JOBS_UPDATE_PROGRESS_MONITOR_PID" 2>/dev/null || true
+  JOBS_UPDATE_PROGRESS_MONITOR_PID=""
+}
+# 判断 Homebrew 失败是否来自下载链路，以免对安装或权限错误盲目换线。
+jobs_update_brew_failure_is_network_related() {
+  [[ -n "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" && -f "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]] || return 1
+  grep -Eqi 'curl: \([0-9]+\)|Failed to download resource|Download failed|Could not resolve host|Failed to connect|Connection timed out|Operation timed out|Operation too slow|SSL connect error|Recv failure|Send failure|HTTP/[0-9.]+ stream' "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+}
+# 使用指定 IP 协议执行一次 Homebrew 下载命令。
+jobs_update_run_brew_network_attempt() {
+  local desc="$1"
+  local confirmation_mode="$2"
+  local family="$3"
+  local guard_mode="$4"
+  local retries=0
+  shift 4
+
+  jobs_update_write_brew_curlrc "$family" "$guard_mode" || return 1
+  [[ -n "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]] || return 1
+  : > "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+  note_echo "${desc}（${family}，连续 ${JOBS_UPDATE_ACTIVE_LOW_SPEED_SECONDS} 秒低于 $(jobs_update_format_download_speed "$JOBS_UPDATE_ACTIVE_LOW_SPEED_LIMIT_BPS") 时终止当前尝试）"
+  debug_echo "执行命令：HOMEBREW_CURLRC=<临时配置> HOMEBREW_CURL_RETRIES=${retries} $*"
+  jobs_update_start_brew_progress_monitor "$desc" "$family"
+
+  if [[ "$confirmation_mode" == "yes" ]]; then
+    printf 'y\n' | env HOMEBREW_CURLRC="$JOBS_UPDATE_BREW_CURLRC" HOMEBREW_CURL_RETRIES="$retries" "$@" 2>&1 | tee -a "$LOG_FILE" | tee "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+    local exit_code=${pipestatus[2]}
+  else
+    env HOMEBREW_CURLRC="$JOBS_UPDATE_BREW_CURLRC" HOMEBREW_CURL_RETRIES="$retries" "$@" 2>&1 | tee -a "$LOG_FILE" | tee "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+    local exit_code=${pipestatus[1]}
+  fi
+  jobs_update_stop_brew_progress_monitor
 
   if (( exit_code == 0 )); then
-    success_echo "brew update（更新软件列表）：完成"
-    rm -f "$output_file"
+    success_echo "${desc}（${family}）：完成"
+  else
+    warn_echo "${desc}（${family}）：失败（exit code: ${exit_code}）"
+  fi
+  return $exit_code
+}
+# 为所有 Homebrew 更新下载提供低速换线和有限重试。
+jobs_update_run_brew_adaptive_cmd() {
+  local desc="$1"
+  local confirmation_mode="$2"
+  local primary_family=""
+  local secondary_family=""
+  local exit_code=0
+  shift 2
+
+  if ! jobs_update_ensure_network_strategy; then
+    if [[ "$confirmation_mode" == "yes" ]]; then
+      jobs_update_run_cmd_with_yes "$desc" "$@"
+    else
+      jobs_update_run_cmd "$desc" "$@"
+    fi
+    return $?
+  fi
+  if [[ -n "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" && -f "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]]; then
+    rm -f "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+  fi
+  JOBS_UPDATE_LAST_BREW_OUTPUT_FILE="$(mktemp -t jobs_update_brew_output.XXXXXX)" || return 1
+  primary_family="$JOBS_UPDATE_PREFERRED_IP_FAMILY"
+  secondary_family="$JOBS_UPDATE_SECONDARY_IP_FAMILY"
+
+  jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$primary_family" adaptive "$@"
+  exit_code=$?
+  if (( exit_code == 0 )); then
+    jobs_update_prefer_ip_family "$primary_family"
+    return 0
+  fi
+  if ! jobs_update_brew_failure_is_network_related; then
+    return $exit_code
+  fi
+
+  warn_echo "${primary_family} 下载异常或持续低速，自动切换到 ${secondary_family}。"
+  jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$secondary_family" adaptive "$@"
+  exit_code=$?
+  if (( exit_code == 0 )); then
+    jobs_update_prefer_ip_family "$secondary_family"
+    return 0
+  fi
+  if ! jobs_update_brew_failure_is_network_related; then
+    return $exit_code
+  fi
+
+  warn_echo "IPv4 / IPv6 均触发网络失败；将使用探测中较快的 ${primary_family} 做最后一次宽松低速尝试，停滞时仍会退出。"
+  jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$primary_family" final "$@"
+  exit_code=$?
+  jobs_update_prefer_ip_family "$primary_family"
+  return $exit_code
+}
+# 执行 brew update，遇到 Homebrew API 下载失败时自动降级为本地 tap 更新。
+jobs_update_run_brew_update() {
+  jobs_update_run_brew_adaptive_cmd "brew update（更新软件列表）" plain brew update
+  local exit_code=$?
+
+  if (( exit_code == 0 )); then
     return 0
   fi
 
-  if grep -Eq "formulae\\.brew\\.sh/api|Failed to download .*\\.jws\\.json" "$output_file"; then
+  if [[ -n "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]] && grep -Eq "formulae\\.brew\\.sh/api|Failed to download .*\\.jws\\.json" "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"; then
     warn_echo "brew update API 数据下载失败，将使用 HOMEBREW_NO_INSTALL_FROM_API=1 降级重试。"
     warm_echo "说明：该模式会跳过 formulae.brew.sh API JSON 下载，改用本地 tap 更新，通常更慢但更稳。"
-    debug_echo "执行命令：HOMEBREW_NO_INSTALL_FROM_API=1 brew update"
-
-    env HOMEBREW_NO_INSTALL_FROM_API=1 brew update 2>&1 | tee -a "$LOG_FILE"
-    exit_code=${pipestatus[1]}
-
-    if (( exit_code == 0 )); then
-      success_echo "brew update（降级重试）：完成"
-    else
-      warn_echo "brew update（降级重试）：失败（exit code: ${exit_code}）"
-    fi
+    jobs_update_run_brew_adaptive_cmd "brew update（本地 tap 降级重试）" plain env HOMEBREW_NO_INSTALL_FROM_API=1 brew update
+    exit_code=$?
   else
     warn_echo "brew update（更新软件列表）：失败（exit code: ${exit_code}）"
   fi
 
-  rm -f "$output_file"
   return $exit_code
 }
 # 执行 brew upgrade，托管模式下自动确认 Homebrew 的 y/n 提示。
 jobs_update_run_brew_upgrade() {
   if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
-    jobs_update_run_cmd_with_yes "brew upgrade（升级已安装 formula）" brew upgrade
+    jobs_update_run_brew_adaptive_cmd "brew upgrade（升级已安装 formula）" yes brew upgrade
     return $?
   fi
 
-  jobs_update_run_cmd "brew upgrade（升级已安装 formula）" brew upgrade
+  jobs_update_run_brew_adaptive_cmd "brew upgrade（升级已安装 formula）" plain brew upgrade
 }
 # 执行 brew cask 全局升级，托管模式下自动确认 Homebrew 的 y/n 提示。
 jobs_update_run_brew_cask_upgrade() {
   if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
-    jobs_update_run_cmd_with_yes "brew upgrade --cask（升级已安装 cask）" brew upgrade --cask
+    jobs_update_run_brew_adaptive_cmd "brew upgrade --cask（升级已安装 cask）" yes brew upgrade --cask
     return $?
   fi
 
-  jobs_update_run_cmd "brew upgrade --cask（升级已安装 cask）" brew upgrade --cask
+  jobs_update_run_brew_adaptive_cmd "brew upgrade --cask（升级已安装 cask）" plain brew upgrade --cask
 }
 # 封装 append_once 对应的独立处理逻辑。
 append_once() {
@@ -662,6 +996,7 @@ update.command - macOS 开发环境升级维护
   - 单项失败：记录警告，继续后续项
   - 工具不存在：提示回到 install.command 补装，不在 update 中静默安装
   - Homebrew：brew update 遇到 formulae.brew.sh API 下载失败时，会自动使用 HOMEBREW_NO_INSTALL_FROM_API=1 降级重试
+  - Homebrew 下载：全局测速选择 IPv4 / IPv6；正式下载持续低速时自动换线，无需人工选择
   - 第三方 tap：检测到 Homebrew tap trust 策略时，会先信任脚本维护的指定 tap 后再执行升级
 
 当前 BREW_CASKS：
@@ -972,7 +1307,7 @@ jobs_update_brew_formula_one() {
     jobs_update_run_cmd "确认 Homebrew Tap：${tap_name}" brew tap "$tap_name" || true
   fi
 
-  jobs_update_run_cmd "升级 brew formula：${formula_name}" brew upgrade "$install_arg" || true
+  jobs_update_run_brew_adaptive_cmd "升级 brew formula：${formula_name}" plain brew upgrade "$install_arg" || true
   brew_formula_after_update "$formula_name"
 }
 # 封装 jobs_update_brew_formulae 对应的独立处理逻辑。
@@ -1013,7 +1348,7 @@ jobs_update_brew_cask_one() {
     return 0
   fi
 
-  jobs_update_run_cmd "升级 brew cask：${cask_name}" brew upgrade --cask "$cask_name" || true
+  jobs_update_run_brew_adaptive_cmd "升级 brew cask：${cask_name}" plain brew upgrade --cask "$cask_name" || true
   brew_cask_after_update "$cask_name"
 }
 # 封装 jobs_update_brew_casks 对应的独立处理逻辑。
@@ -1388,6 +1723,10 @@ jobs_update_main() {
   jobs_update_show_readme_and_wait
   # 执行更新或升级步骤，确保该动作不会被默认触发。
   update "$@"
+  local exit_code=$?
+  # 清理临时下载策略，并恢复用户原有的 Homebrew curl 环境。
+  jobs_update_cleanup_network_strategy
+  return $exit_code
 }
 # 打印脚本内置自述，并按运行入口决定是否等待用户确认。
 show_script_intro_and_wait() {
