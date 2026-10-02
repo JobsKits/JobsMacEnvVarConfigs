@@ -92,9 +92,9 @@ _jobs_source_and_run_scripts_command() {
   fi
 
   "$main_function" "$@"
-  local status=$?
+  local command_status=$?
   _jobs_restore_stateful_wrapper "$command_name" "$main_function"
-  return $status
+  return $command_status
 }
 # list：打开 JobsMacEnv 功能菜单。
 list() { _jobs_run_scripts_command list "$@"; }

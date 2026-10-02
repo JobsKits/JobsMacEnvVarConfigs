@@ -215,11 +215,11 @@ jobs_df_decode_drag_path() {
 }
 # 封装 jobs_df_abs_dir 对应的独立处理逻辑。
 jobs_df_abs_dir() {
-  local path="$1"
-  [[ -n "$path" ]] || return 1
+  local target_path="$1"
+  [[ -n "$target_path" ]] || return 1
 
-  if [[ -d "$path" ]]; then
-    (cd "$path" && pwd -P)
+  if [[ -d "$target_path" ]]; then
+    (cd "$target_path" && pwd -P)
     return 0
   fi
 
@@ -1310,14 +1310,10 @@ initialize_script_runtime() {
 }
 # 编排脚本的高层业务流程。
 main() {
-  # 展示脚本说明并等待用户确认影响范围。
-  jobs_df_show_readme_and_wait
-  # 初始化 Shell 选项、日志、依赖和入口运行状态。
-  initialize_script_runtime
-  # 注册退出和中断处理，确保异常场景仍能收尾。
-  jobs_df_register_signal_handlers
-  # 执行目录共享的参数解析、确认和会话流程。
-  jobs_df_run_business_flow "$@"
+  jobs_df_show_readme_and_wait # 展示脚本说明并等待用户确认影响范围。
+  initialize_script_runtime # 初始化 Shell 选项、日志、依赖和入口运行状态。
+  jobs_df_register_signal_handlers # 注册退出和中断处理，确保异常场景仍能收尾。
+  jobs_df_run_business_flow "$@" # 执行目录共享的参数解析、确认和会话流程。
 }
 
 main "$@"

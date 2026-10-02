@@ -361,14 +361,14 @@ _jobs_simios_run_download() {
 
   set +e
   DEVELOPER_DIR="$JOBS_SIMIOS_DEVELOPER_DIR_SELECTED" "$JOBS_SIMIOS_XCODEBUILD_BIN" "${args[@]}" 2>&1 | tee "$JOBS_SIMIOS_LOG_FILE"
-  local status=${pipestatus[1]}
+  local command_status=${pipestatus[1]}
   set -e
 
-  if (( status != 0 )); then
-    _jobs_simios_err "下载命令失败，退出码：$status"
+  if (( command_status != 0 )); then
+    _jobs_simios_err "下载命令失败，退出码：$command_status"
     _jobs_simios_warn "完整日志：$JOBS_SIMIOS_LOG_FILE"
     _jobs_simios_warn "常见原因：license 未同意、Xcode 未完成首次启动、网络 / CDN 异常、磁盘空间不足、Xcode 版本过旧。"
-    return "$status"
+    return "$command_status"
   fi
 
   _jobs_simios_ok "iOS Simulator Runtime 下载 / 补齐命令执行完成。"
@@ -476,16 +476,14 @@ show_script_intro_and_wait() {
   print -r -- '============================================================================'
   if [[ ! -t 0 ]]; then
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
-    return 1
+    exit 1
   fi
-  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
+  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _ || exit 1
 }
 # 统一收口脚本入口，仅委托已经拆分完成的业务流程。
 main() {
-  # 展示脚本内置自述，并按运行入口完成防误触确认。
-  show_script_intro_and_wait
-  # 执行 _jobs_simios_main 对应的独立业务步骤。
-  _jobs_simios_main "$@"
+  show_script_intro_and_wait # 展示脚本内置自述，并按运行入口完成防误触确认。
+  _jobs_simios_main "$@" # 执行 _jobs_simios_main 对应的独立业务步骤。
 }
 # 初始化脚本运行环境，并集中承载原有的顶层执行逻辑。
 initialize_script_module() {

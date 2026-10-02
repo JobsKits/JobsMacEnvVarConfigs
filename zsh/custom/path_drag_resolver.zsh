@@ -16,13 +16,13 @@
 : "${JOBS_ALIAS_DRAG_AUTO_RESOLVE:=false}"
 
 jobs_is_macos_alias() {
-  local path="$1"
-  [[ -e "$path" ]] || return 1
+  local target_path="$1"
+  [[ -e "$target_path" ]] || return 1
 
   osascript <<EOF_APPLE >/dev/null 2>&1
 tell application "Finder"
   try
-    set f to POSIX file "$path" as alias
+    set f to POSIX file "$target_path" as alias
     original item of f
     return true
   on error
@@ -33,16 +33,16 @@ EOF_APPLE
 }
 
 jobs_resolve_drag_target() {
-  local path="$1"
+  local target_path="$1"
   local resolved=""
 
-  [[ -n "$path" ]] || return 1
+  [[ -n "$target_path" ]] || return 1
 
-  if jobs_is_macos_alias "$path"; then
+  if jobs_is_macos_alias "$target_path"; then
     resolved="$(osascript <<EOF_APPLE 2>/dev/null
 tell application "Finder"
   try
-    set f to POSIX file "$path" as alias
+    set f to POSIX file "$target_path" as alias
     POSIX path of (original item of f)
   on error
     return ""
@@ -57,22 +57,22 @@ EOF_APPLE
   fi
 
   if command -v realpath >/dev/null 2>&1; then
-    resolved="$(realpath "$path" 2>/dev/null || true)"
+    resolved="$(realpath "$target_path" 2>/dev/null || true)"
     if [[ -n "$resolved" ]]; then
       printf '%s\n' "$resolved"
       return 0
     fi
   fi
 
-  if [[ -L "$path" ]]; then
-    resolved="$(perl -MCwd=abs_path -e 'print abs_path(shift)' "$path" 2>/dev/null || true)"
+  if [[ -L "$target_path" ]]; then
+    resolved="$(perl -MCwd=abs_path -e 'print abs_path(shift)' "$target_path" 2>/dev/null || true)"
     if [[ -n "$resolved" ]]; then
       printf '%s\n' "$resolved"
       return 0
     fi
   fi
 
-  printf '%s\n' "$path"
+  printf '%s\n' "$target_path"
 }
 
 jobs_unescape_dragged_path() {

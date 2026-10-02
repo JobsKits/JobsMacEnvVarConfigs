@@ -84,7 +84,7 @@ show_script_intro_and_wait() {
   clear 2>/dev/null || true
 
   echo ""
-  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
+  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _ || exit 1
 }
 # ---------- 依赖检查 ----------
 find_brew_bin() {
@@ -420,9 +420,9 @@ convert_one() {
   highlight_echo "输出：$output"
 
   run_ffmpeg_convert "$ffmpeg_bin" "$input_abs" "$output" "$target_ext"
-  local status=$?
+  local command_status=$?
 
-  if (( status == 0 )); then
+  if (( command_status == 0 )); then
     success_echo "转换完成：$output"
     return 0
   fi
@@ -432,7 +432,7 @@ convert_one() {
     rm -f "$output" 2>/dev/null || true
     warn_echo "已清理失败产生的半成品文件：$output"
   fi
-  return "$status"
+  return "$command_status"
 }
 # 封装 convert_many 对应的独立处理逻辑。
 convert_many() {
@@ -535,10 +535,8 @@ show_script_intro_and_wait() {
 }
 # 统一收口脚本入口，仅委托已经拆分完成的业务流程。
 main() {
-  # 展示脚本内置自述，并按运行入口完成防误触确认。
-  show_script_intro_and_wait
-  # 执行 jobs_to_main 对应的独立业务步骤。
-  jobs_to_main "$@"
+  show_script_intro_and_wait # 展示脚本内置自述，并按运行入口完成防误触确认。
+  jobs_to_main "$@" # 执行 jobs_to_main 对应的独立业务步骤。
 }
 # 初始化脚本运行环境，并集中承载原有的顶层执行逻辑。
 initialize_script_module() {

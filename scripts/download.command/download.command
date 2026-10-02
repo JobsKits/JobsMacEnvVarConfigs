@@ -71,7 +71,7 @@ show_script_intro_and_wait() {
     error_echo "当前没有可交互输入，请在终端中重新运行。"
     exit 1
   fi
-  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
+  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _ || exit 1
 }
 # 输出 download 命令用法，说明 yt-dlp 与 cobalt 两种后端。
 jobs_download_print_usage() {
@@ -385,15 +385,15 @@ jobs_download_sanitize_filename() {
 jobs_download_unique_path() {
   emulate -L zsh
 
-  local path="$1"
-  [[ ! -e "$path" ]] && print -r -- "$path" && return 0
+  local target_path="$1"
+  [[ ! -e "$target_path" ]] && print -r -- "$target_path" && return 0
 
   local stem ext index candidate
-  if [[ "$path" == *.* ]]; then
-    stem="${path%.*}"
-    ext=".${path##*.}"
+  if [[ "$target_path" == *.* ]]; then
+    stem="${target_path%.*}"
+    ext=".${target_path##*.}"
   else
-    stem="$path"
+    stem="$target_path"
     ext=""
   fi
   index=1
