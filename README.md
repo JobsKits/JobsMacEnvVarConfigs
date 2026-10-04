@@ -326,7 +326,7 @@ local.zsh
 
 
 
-#### 3.0 `list`：功能菜单总入口
+#### 3.0 `list`：功能菜单总入口 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -354,7 +354,7 @@ list
 - 安装脚本会检测命令名冲突并给出警告，但不会静默覆盖其他路径里的命令。
 - 涉及 Homebrew / fzf 更新时，统一规则是：回车跳过，输入任意字符后回车才执行更新流程。
 
-#### 3.1 `m5c`：MD5 文件一致性比较
+#### 3.1 `m5c`：MD5 文件一致性比较 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -381,7 +381,7 @@ m5c
 - `m5c` 表示 MD5 Compare，命令名短，不覆盖 macOS 系统自带 `md5`。
 - MD5 适合日常文件校验和去重，不适合密码、安全签名或强安全校验。
 
-#### 3.2 `flat`：URL 编码去乱码 / 解码
+#### 3.2 `flat`：URL 编码去乱码 / 解码 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -410,7 +410,7 @@ flat --plus "hello+world%21"
 - `--plus` 会把 `+` 解析为空格，适合表单编码内容。
 - `flat` 作为去乱码入口，短、好输入，并通过 `list` 菜单展示用途，降低记忆成本。
 
-#### 3.3 `clean`：清除终端历史 + Command+K 式清屏
+#### 3.3 `clean`：清除终端历史 + Command+K 式清屏 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -449,7 +449,7 @@ clean
 - `clear` 只清当前可视区域，不清滚动缓冲；`clean` 使用 ANSI scrollback 清理序列和 iTerm2 ClearScrollback 扩展，目标效果对齐 Command+K。
 - 这里没有调用 `clear` 命令，因此不是普通 clear 的效果。
 
-#### 3.4 `clr`：清空 Chrome 下载记录
+#### 3.4 `clr`：清空 Chrome 下载记录 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -488,7 +488,7 @@ clr --ui-only
 - `--js-only` 只尝试 Chrome JavaScript 点击。
 - `--ui-only` 只尝试 macOS 辅助功能 UI 点击。
 
-#### 3.4.1 `dq`：修复新装 App 打不开 / 废纸篓提示
+#### 3.4.1 `dq`：修复新装 App 打不开 / 废纸篓提示 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -513,7 +513,7 @@ dq --dry-run ~/Downloads/Otty.dmg
 - 不执行 `spctl --master-disable`，不全局关闭 Gatekeeper。
 - 支持拖入路径、带空格路径、DMG、zip、App 和目录。
 
-#### 3.5 `zz <路径>`：跳转到真实目录
+#### 3.5 `zz <路径>`：跳转到真实目录 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -548,7 +548,7 @@ zz ~/Downloads/demo.command
 
 适合场景：拖文件、拖目录、点到 Finder 替身、遇到软链接时，不用手动 `cd`、`dirname`、`realpath`。
 
-#### 3.5 `x <脚本文件>`：给脚本加执行权限并立即执行
+#### 3.5 `x <脚本文件>`：给脚本加执行权限并立即执行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -579,7 +579,7 @@ x ~/Downloads/test.sh
 
 适合场景：下载了 `.command` / `.sh`，不想每次手动写 `chmod +x` 再执行。
 
-#### 3.6 `cor`：颜色格式转换器
+#### 3.6 `cor`：颜色格式转换器 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -611,7 +611,7 @@ cor '0x80D2D4DE'
 - 命令行参数里 `#`、括号、逗号容易被 shell 解释，建议直接用交互模式，或者给颜色值加引号。
 - `0xAARRGGBB` 的透明度在最前面，例如 `0x80D2D4DE`。
 
-#### 3.7 `shell`：用 fzf 选择并切换默认 Shell
+#### 3.7 `shell`：用 fzf 选择并切换默认 Shell <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -647,7 +647,7 @@ brew install fzf
 - `nu` / Nushell 如果是 Homebrew 安装，常见路径是 `$(brew --prefix)/bin/nu` 或 `$(brew --prefix)/bin/nu`。只要扫描到可执行文件，就会进列表；但作为默认登录 shell 前，macOS 仍要求它在 `$SYSTEM_CONFIG_DIR/shells` 里。
 - 切换完成后，需要重新打开终端窗口才会完整生效。
 
-#### 3.8 `download <url>`：媒体下载，yt-dlp 优先并可兜底 cobalt
+#### 3.8 `download <url>`：媒体下载，yt-dlp 优先并可兜底 cobalt <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -691,7 +691,7 @@ export JOBS_DOWNLOAD_COBALT_KEY="可选 Api-Key"
 
 适合场景：需要登录态 cookies 的媒体优先走 `yt-dlp`；遇到 `yt-dlp` 当前站点适配失败时，用自建 cobalt API 增加兜底覆盖面。
 
-#### 3.9 `Ctrl + G`：把命令行最后一个路径参数解析成真实路径
+#### 3.9 `Ctrl + G`：把命令行最后一个路径参数解析成真实路径 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -734,7 +734,7 @@ export JOBS_ALIAS_DRAG_AUTO_RESOLVE=true
 - `JOBS_ALIAS_DRAG_AUTO_RESOLVE=true` 后，粘贴 / 拖入单个有效路径时会尝试自动转成真实路径。
 - 不想自动解析时，不设置 `JOBS_ALIAS_DRAG_AUTO_RESOLVE`，只保留 `Ctrl + G` 手动触发即可。
 
-#### 3.10 `shell_behavior.zsh`：交互式终端默认行为
+#### 3.10 `shell_behavior.zsh`：交互式终端默认行为 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -756,7 +756,7 @@ if [[ -o interactive ]] && [[ -d "$HOME/Desktop" ]]; then
 fi
 ```
 
-#### 3.10.1 `git_behavior.zsh`：Git 中文路径 / emoji 路径显示修正
+#### 3.10.1 `git_behavior.zsh`：Git 中文路径 / emoji 路径显示修正 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -973,7 +973,7 @@ xcodebuild -downloadPlatform iOS -verbose
 
 交互规则：普通更新 / 升级动作默认回车跳过，输入任意字符后回车才执行；会影响 `xcodebuild` 的必要支援项会单独提示原因。
 
-#### 3.14 `local.zsh`：Scripts 模块加载器
+#### 3.14 `local.zsh`：Scripts 模块加载器 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
@@ -1081,7 +1081,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
 
 
-## 启动提示修复
+## 启动提示修复 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 如果打开终端看到类似 `JobsMacEnv: 缺少模块` 的提示，说明系统里的 `~/.zshrc` 已经切到新版 `Scripts` 模块加载器，但 `~/.JobsMacEnv/Scripts` 目录还没有成功同步。
 
@@ -1104,7 +1104,7 @@ chmod +x ./install.command/install.command
 source ~/.zshrc
 ```
 
-## 2026-05-12 修复说明：Scripts 模块化加载
+## 2026-05-12 修复说明：Scripts 模块化加载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 本版修复 `local.zsh` 模块化拆分后启动提示 `Scripts 模块未安装完整` 的问题：
 
@@ -1115,7 +1115,7 @@ source ~/.zshrc
 - `clean` 仍会在检测到 Homebrew 时顺手执行 `brew cleanup`
 
 
-## Scripts 模块加载说明
+## Scripts 模块加载说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 新版统一使用 `~/.JobsMacEnv/Scripts` 作为模块目录，`zsh/custom/local.zsh` 只负责加载模块。模块标准路径为 `Scripts/<脚本全名>/<脚本全名>`。安装脚本会在同步完成后执行模块自检；如果打开终端出现模块缺失提示，请重新执行：
 
@@ -1128,14 +1128,14 @@ source ~/.zshrc
 
 > 说明：脚本运行时展示的自述已内置在 `.command` 脚本中，不读取本 README.md；本文件仅用于仓库/文件夹阅读。
 
-## list 菜单入口调整说明
+## list 菜单入口调整说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 `list` 现在作为 JobsMacEnv 自定义命令总菜单，不再打印长篇自述，也不再等待用户先按回车确认。运行后会直接使用 `fzf` 展示自定义命令和含义；如果 `fzf` 不可用，则退化为文本清单。
 
 当前纳入菜单的功能入口包括：`m5c`、`flat`、`trs`、`gif`、`install_jdk17.command`、`simios`、`cor`、`decode`、`ts`、`download`、`code`、`install`、`update`、`shell`、`zz`、`x`、`save`、`rb`、`a`、`b`、`i`、`flutter_project.command`、`fixfvm`、`check1`、`check`、`c`、`d`、`buildCheck`、`apk`、`ipa`、`config`。
 
 
-## JobsMacEnv 自定义命令收口规则
+## JobsMacEnv 自定义命令收口规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 以终端输入窗口为准：大部分用户可输入、且不是系统原生命令的自定义命令，独立放入 `Scripts/<命令>.command/<命令>.command`；`flutter_project.command` 保持原版函数模块位置，不生成 `~/.local/bin/flutter`；`install_jdk17.command` 保持原版脚本位置，不生成 `~/.local/bin/jdk17`。
 - 每个命令目录必须有同级 `README.md`。
@@ -1143,7 +1143,7 @@ source ~/.zshrc
 - `list` 是菜单入口，菜单中不显示 `list` 自己，其它自定义命令都应显示。
 - `zsh/custom` 只保留加载器和交互行为；具体实现仍放在 Scripts 模块或 Scripts 私有库。
 
-## 2026-05-17 新增说明：FFmpeg 通用媒体格式转换
+## 2026-05-17 新增说明：FFmpeg 通用媒体格式转换 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 新增 `Scripts/to.command/to.command`，用于统一处理 `to mp4 文件`、`mp4 文件`、`mov 文件`、`webm 文件`、`mp3 文件` 等媒体格式转换。真实脚本只维护一份，格式短命令通过入口包装复用，避免为每种格式复制独立脚本。
 
@@ -1151,7 +1151,7 @@ source ~/.zshrc
 
 ---
 
-## clr：清空 Chrome 下载历史
+## clr：清空 Chrome 下载历史 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 新增命令：
 

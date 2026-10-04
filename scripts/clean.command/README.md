@@ -26,7 +26,7 @@
 
 该脚本适合 `.command` 双击运行，也可以在终端中执行。启动后的说明展示、依赖检查和核心流程都写在脚本内部。
 
-## 二、运行
+## 二、运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```zsh
 ./clean.command
@@ -41,13 +41,13 @@ clean [参数...]
 
 脚本会清空终端历史并移动构建产物，因此必须输入完整的 `YES` 才会继续；其它输入一律取消。
 
-## 三、结构约定
+## 三、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 运行时说明和核心流程已经写在 `clean.command` 内部，不依赖同级 `README.md`。
 
 本 README 只用于源码浏览、维护说明和当前流程说明。
 
-## 四、失效 App 图标清理边界
+## 四、失效 App 图标清理边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 只移动 Spotlight 已收录、位于当前用户目录内、且路径符合 Xcode `Build/Products` / `build` 输出特征的 iPhone、Apple TV、Apple Watch 和 Apple Vision `.app`。
 
@@ -59,7 +59,7 @@ clean [参数...]
 
 - 后续重新运行 Xcode 或 Simulator 时，开发 App 可能被系统再次登记；再次执行 `clean` 即可清理。
 
-## 五、流程图
+## 五、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```mermaid
 flowchart TD
@@ -84,7 +84,7 @@ flowchart TD
     I --> J
 ```
 
-## 六、日志文件
+## 六、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 运行日志默认写入 `$TMPDIR`，文件名通常来自脚本名去掉扩展名：
 
@@ -92,7 +92,7 @@ flowchart TD
 $TMPDIR/clean.log
 ```
 
-## 七、风险说明
+## 七、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - zsh 历史会被清空，无法从脚本自动恢复。
 

@@ -9,7 +9,7 @@
 - 采用 Shell 脚本的原因：Shell 来自 [**macOS**](https://www.apple.com/macos/) 原生系统底层，虽然写法相对繁琐冗杂，但执行效率高，并且不需要额外介入 [**Ruby**](https://www.ruby-lang.org)、[**Python**](https://www.python.org) 等第三方运行环境，因此具备更好的移植性。
 
 
-## 一、功能
+## 一、功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 安装和初始化常用 [**macOS**](https://www.apple.com/macos/) 开发环境依赖。
 
@@ -36,7 +36,7 @@
 - 注意：`install` 这个命令名与系统 `$SYSTEM_USR_DIR/bin/install` 存在冲突风险。
   建议保留 `.command` 后缀，或放在明确的工具目录中调用。
 
-## 二、运行
+## 二、运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 在脚本目录中执行：
 
@@ -51,7 +51,7 @@
   install.command [参数...]
   ```
 
-## 三、Homebrew 第三方配置
+## 三、Homebrew 第三方配置 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 脚本顶部集中维护 [**Homebrew**](https://brew.sh) 第三方配置。
 
@@ -147,7 +147,7 @@
 
 - 少数需要 `tap` 或安装后置处理的 cask / formula，由脚本内部函数自动处理，不要在数组里写完整命令。
 
-## 四、当前 brew cask
+## 四、当前 brew cask <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - [**Hammerspoon**](https://www.hammerspoon.org/)
 
@@ -194,7 +194,7 @@
 - [**QLColorCode**](https://github.com/sbarex/QLColorCode)
 - `temurin@17`
 
-## 五、当前 brew formula
+## 五、当前 brew formula <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - [**agg**](https://github.com/asciinema/agg)
 - [**asciinema**](https://asciinema.org)
@@ -237,7 +237,7 @@
 - [**nginx**](https://nginx.org)
 - [**radare2**](https://www.radare.org/n/)
 
-## 六、特殊处理
+## 六、特殊处理 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - [**GitHub Store**](https://github.com/OpenHub-Store/GitHub-Store)
   安装 / 更新前会自动执行：
@@ -301,7 +301,7 @@
   completion.zsh
   ```
 
-## 七、菜单顺序
+## 七、菜单顺序 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - [**fzf**](https://github.com/junegunn/fzf) 菜单固定为按显示顺序从上到下排列。
 
@@ -374,7 +374,7 @@
   手动下载页面
   ```
 
-## 八、brew 相关顺序
+## 八、brew 相关顺序 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - brew 相关部分固定为：
 
@@ -396,7 +396,7 @@
   brew -v
   ```
 
-## 九、交互规则
+## 九、交互规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 启动菜单前会自检 [**Homebrew**](https://brew.sh) 与 [**fzf**](https://github.com/junegunn/fzf)。
 
@@ -433,7 +433,7 @@
   输入任意字符后回车：跳过
   ```
 
-## 十、npm 全局包
+## 十、npm 全局包 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - `quicktype`
   依赖 [**npm**](https://www.npmjs.com)，如果 `npm` 不存在，会提示先选择：
@@ -495,7 +495,7 @@
   codegraph init -i
   ```
 
-## 十一、gem 包
+## 十一、gem 包 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - [**CocoaPods**](https://cocoapods.org)
   依赖 [**RubyGems**](https://rubygems.org) 的 `gem` 命令。
@@ -512,7 +512,7 @@
   sudo gem update cocoapods
   ```
 
-## 十二、Git LFS 初始化
+## 十二、Git LFS 初始化 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - [**Git LFS**](https://git-lfs.com) 初始化部件会检查：
 
@@ -535,7 +535,7 @@
   git config --global http.postBuffer 524288000
   ```
 
-## 十三、JobsKits 仓库
+## 十三、JobsKits 仓库 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 默认工作目录：
 
@@ -566,7 +566,7 @@
 
 - 不会递归执行 `JobsMacEnvVarConfig/install.command`，避免自调用死循环。
 
-## 十四、手动下载页面
+## 十四、手动下载页面 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - [**Visual Studio Code**](https://code.visualstudio.com/)
 
@@ -576,7 +576,7 @@
 
 - [**Codex++**](https://github.com/BigPizzaV3/CodexPlusPlus)
 
-## 十五、网络前置检查
+## 十五、网络前置检查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 安装 [**Homebrew**](https://brew.sh) / [**Oh My Zsh**](https://ohmyz.sh) 前，会检查：
 
@@ -592,7 +592,7 @@
 
 - 如果网络不可达，脚本会直接提示并退出对应流程，避免后续命令假失败。
 
-## 十六、结构约定
+## 十六、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 运行时打印的自述已经写死在 `install.command` 内部，不依赖同级 `README.md`。
 
@@ -604,7 +604,7 @@
   $TMPDIR/install.log
   ```
 
-## 十七、流程图
+## 十七、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 主流程：
 

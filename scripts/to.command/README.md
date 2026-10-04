@@ -6,7 +6,7 @@
 
 ---
 
-## 🔥 <font id=前言>前言</font> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 🔥 <font id=前言>前言</font>
 
 - 采用 Shell 脚本的原因：Shell 来自 [**macOS**](https://www.apple.com/macos/) 原生系统底层，虽然写法相对繁琐冗杂，但执行效率高，并且不需要额外介入 [**Ruby**](https://www.ruby-lang.org)、[**Python**](https://www.python.org) 等第三方运行环境，因此具备更好的移植性。
 
@@ -29,7 +29,7 @@
 
 ## 二、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-### 2.1、终端短命令
+### 2.1、终端短命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```zsh
 mp4 ~/Desktop/input.webm
@@ -73,7 +73,7 @@ goodbye-happiness
 goodbye-happiness.mp4
 ```
 
-### 2.2、通用命令
+### 2.2、通用命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```zsh
 to mp4 ~/Desktop/input.webm
@@ -87,7 +87,7 @@ mp4 ~/Desktop/a.webm ~/Desktop/b.webm ~/Desktop/c.mov
 
 脚本会逐个询问输出文件名。
 
-### 2.3、通过 `list` 菜单执行
+### 2.3、通过 `list` 菜单执行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 执行：
 
@@ -105,7 +105,7 @@ to mp4
 
 随后脚本会要求拖入或输入源文件路径。
 
-### 2.4、双击 `.command`
+### 2.4、双击 `.command` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 双击 `to.command` 时，会先展示本 `README.md`，按回车后进入交互模式：
 

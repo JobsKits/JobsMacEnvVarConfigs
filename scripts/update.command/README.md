@@ -6,7 +6,7 @@
 
 ---
 
-## 🔥 <font id=前言>前言</font> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## 🔥 <font id=前言>前言</font>
 
 - 采用 Shell 脚本的原因：Shell 来自 [**macOS**](https://www.apple.com/macos/) 原生系统底层，虽然写法相对繁琐冗杂，但执行效率高，并且不需要额外介入 [**Ruby**](https://www.ruby-lang.org)、[**Python**](https://www.python.org) 等第三方运行环境，因此具备更好的移植性。
 
@@ -130,7 +130,7 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
 
 `update.command` 内部保留与 `install.command` 同源的数组。
 
-### 4.1、`brew cask`
+### 4.1、`brew cask` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 当前 `BREW_CASKS`：
 
@@ -170,7 +170,7 @@ readonly -a BREW_CASKS=(
 | [**qlcolorcode**](https://github.com/sbarex/QLColorCode) | Quick Look 代码预览 |
 | `temurin@17` | Eclipse Temurin JDK 17 |
 
-### 4.2、`brew formula`
+### 4.2、`brew formula` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 当前 `BREW_FORMULAE`：
 
@@ -281,7 +281,7 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 - [**openjdk**](https://openjdk.org/) / [**openjdk@17**](https://openjdk.org/projects/jdk/17/)：升级后输出 Java 配置提示
 - [**fzf**](https://github.com/junegunn/fzf)：升级后刷新 `fzf` shell 配置
 
-### 4.3、Homebrew 全局自适应下载
+### 4.3、Homebrew 全局自适应下载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 `update.command` 对所有由 Homebrew `curl` 执行的更新下载使用同一组无人值守策略，不再只针对某个 cask 或 formula。
 
@@ -323,7 +323,7 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 18. [**JobsKits**](https://github.com/JobsKits) 仓库
 19. 手动下载 / 更新页面
 
-### 5.1、CodeGraph 升级说明
+### 5.1、CodeGraph 升级说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 通过 `npm` 安装时，升级方式采用覆盖安装到最新版本：
 

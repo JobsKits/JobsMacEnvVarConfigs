@@ -3,7 +3,7 @@
 # - 脚本名称：clean.command
 # - 核心用途：清理 zsh 历史、Homebrew 缓存和 Spotlight 中不可在 macOS 打开的开发 App 图标。
 # - 影响范围：会将 Spotlight 收录的非 macOS 构建 App 移入废纸篓、注销开发 App 记录、清空终端历史，并短暂重启 Spotlight 与 Dock。
-# - 运行提示：运行后会先打印内置自述；必须输入 YES 才会继续，其它输入一律取消。
+# - 运行提示：运行后会先打印内置自述；按回车继续，按 Ctrl+C 取消。
 
 
 # ---------- 基础路径 ----------
@@ -77,9 +77,8 @@ EOFREADME
     return 1
   fi
   local answer=""
-  read -r "?👉 已了解会清空历史并将构建 App 移入废纸篓，请输入 YES 后回车继续：" answer
-  if [[ "$answer" != "YES" ]]; then
-    print -r -- '已取消 clean，未执行任何清理。'
+  if ! read -r "?👉 已了解会清空历史并将构建 App 移入废纸篓，按回车继续；按 Ctrl+C 取消：" answer; then
+    print -r -- '无法读取确认输入，已取消 clean，未执行任何清理。'
     return 1
   fi
   JOBS_CLEAN_CONFIRMED=1

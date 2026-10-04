@@ -1,8 +1,8 @@
-# dq.command
+# <span id="前言">dq.command</span>
 
 解决新装 App 无法打开、被系统建议移到废纸篓的问题；底层会清理传入路径上的 macOS quarantine 隔离标记。
 
-## 一、用途
+## 一、用途 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 `dq` 是对下面命令的安全包装：
 
@@ -12,7 +12,7 @@ xattr -dr com.apple.quarantine "目标路径"
 
 它只处理你传入的路径，不会执行 `spctl --master-disable`，也不会全局关闭 Gatekeeper。
 
-## 二、使用方式
+## 二、使用方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```zsh
 dq
@@ -33,7 +33,7 @@ dq --dry-run ~/Downloads/Otty.dmg
 | `--dry-run` | 只检查并打印结果，不修改文件 |
 | `-h` / `--help` | 显示帮助 |
 
-## 三、流程
+## 三、流程 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```mermaid
 flowchart TD
@@ -48,15 +48,17 @@ flowchart TD
     G -->|否| I[输出完成结果]
 ```
 
-## 四、安全边界
+## 四、安全边界 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 只对明确传入的路径移除 `com.apple.quarantine`。
 - 不提升权限，不请求 `sudo`。
 - 不修改 macOS 全局安全策略。
 - 只建议对来源可信、你主动下载的软件使用。
 
-## 五、日志
+## 五、日志 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```text
 $TMPDIR/dq.log
 ```
+
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

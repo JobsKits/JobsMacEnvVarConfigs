@@ -1,4 +1,4 @@
-# `tts.command`
+# <span id="前言">`tts.command`</span>
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
@@ -8,7 +8,7 @@
 
 > 说明：终端启动时不会打印本 README 全文，只会打印脚本内部维护的简要自述。本 README 用于展开说明、后续维护和排查。
 
-## 🔥 前言
+## <span id="前言">🔥 前言</span>
 
 这个脚本现在是增强型本地 TTS 入口：
 
@@ -27,7 +27,7 @@ fzf 选择 TTS 引擎
 
 ---
 
-## 一、推荐策略
+## 一、推荐策略 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 文本 / 场景 | 推荐引擎 | 原因 |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ fzf 选择 TTS 引擎
 
 ---
 
-## 二、通过 `list` 菜单运行
+## 二、通过 `list` 菜单运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 安装 / 同步 `🌍JobsMacEnvVarConfigs` 后执行：
 
@@ -63,7 +63,7 @@ Supertonic       优势：轻量稳定、启动快、英文/日韩；劣势：�
 
 ---
 
-## 三、通过终端短命令运行
+## 三、通过终端短命令运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 直接进入交互模式：
 
@@ -100,9 +100,9 @@ TTS_ENGINE=supertonic tts "Hello."
 
 ---
 
-## 四、MOSS-TTS-Nano 引擎
+## 四、MOSS-TTS-Nano 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-### 4.1 默认路径
+### 4.1 默认路径 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```shell
 MOSS_TTS_NANO_HOME=~/Desktop/MOSS-TTS-Nano
@@ -123,7 +123,7 @@ pip install -e .
 
 直接按回车执行，输入任意字符后回车跳过。
 
-### 4.2 MOSS 交互命令
+### 4.2 MOSS 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 命令 | 作用 |
 | --- | --- |
@@ -135,7 +135,7 @@ pip install -e .
 | `:config` | 查看当前 MOSS 配置 |
 | `:quit` | 退出 |
 
-### 4.3 输出文件
+### 4.3 输出文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 MOSS-TTS-Nano 官方 CLI 默认输出：
 
@@ -151,9 +151,9 @@ scripts/tts.command/outputs/moss_tts_nano_YYYYMMDD_HHMMSS.wav
 
 ---
 
-## 五、VoxCPM2 引擎
+## 五、VoxCPM2 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-### 5.1 默认路径与参数
+### 5.1 默认路径与参数 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```shell
 VOXCPM_VENV_DIR=~/Desktop/voxcpm-venv
@@ -182,7 +182,7 @@ python -c "from voxcpm import VoxCPM; print('VoxCPM is ready')"
 HF_ENDPOINT=https://hf-mirror.com
 ```
 
-### 5.2 VoxCPM2 交互命令
+### 5.2 VoxCPM2 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 命令 | 作用 |
 | --- | --- |
@@ -202,7 +202,7 @@ HF_ENDPOINT=https://hf-mirror.com
 | `:config` | 查看当前 VoxCPM 配置 |
 | `:quit` | 退出 |
 
-### 5.3 VoxCPM2 输出文件
+### 5.3 VoxCPM2 输出文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 脚本输出到：
 
@@ -210,7 +210,7 @@ HF_ENDPOINT=https://hf-mirror.com
 scripts/tts.command/outputs/voxcpm_YYYYMMDD_HHMMSS.wav
 ```
 
-### 5.4 使用建议
+### 5.4 使用建议 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 VoxCPM2 不适合作为所有场景的默认引擎。它的优势是高质量、多语言、声音设计和声音克隆；代价是模型大、首次下载慢、CPU 推理慢。
 
@@ -218,7 +218,7 @@ VoxCPM2 不适合作为所有场景的默认引擎。它的优势是高质量、
 
 ---
 
-## 六、Supertonic 引擎
+## 六、Supertonic 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 Supertonic 保留原有逻辑。
 
@@ -244,7 +244,7 @@ supertonic serve --host 127.0.0.1 --port 7788
 POST http://127.0.0.1:7788/v1/tts
 ```
 
-### 6.1 Supertonic 交互命令
+### 6.1 Supertonic 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 命令 | 作用 |
 | --- | --- |
@@ -266,7 +266,7 @@ POST http://127.0.0.1:7788/v1/tts
 
 ---
 
-## 七、日志与排查
+## 七、日志与排查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 主日志：
 
@@ -294,7 +294,7 @@ $TMPDIR/tts.server.log
 
 ---
 
-## 八、维护原则
+## 八、维护原则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 这个脚本不要把所有引擎揉成一个“自动乱猜”的黑盒。正确方向是：
 
@@ -313,3 +313,5 @@ $TMPDIR/tts.server.log
 高质量 / 声音克隆 / 声音设计：VoxCPM2
 英文 / 日韩 / 快速稳定：Supertonic
 ```
+
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
