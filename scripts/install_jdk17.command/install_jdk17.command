@@ -14,6 +14,29 @@
 # ============================================================
 
 # ---------- 基础路径 ----------
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
@@ -61,20 +84,20 @@ press_enter_to_continue() {
 # 展示脚本用途和影响范围，并在执行前等待用户确认。
 show_readme() {
   clear
-  bold_echo "🌍 JDK 17 安装脚本"
-  gray_echo "脚本路径：$SCRIPT_PATH"
-  gray_echo "日志路径：$LOG_FILE"
-  echo ""
-  note_echo "功能说明"
-  log "  1. 检测系统是否已经存在 JDK 17。"
-  log "  2. 未安装时，通过 Homebrew 自动安装。"
-  log "  3. 安装顺序：temurin@17 → zulu@17 → openjdk@17。"
-  log "  4. 若使用 openjdk@17，会尝试补齐 /usr/libexec/java_home 可识别的软链接。"
-  echo ""
-  note_echo "交互规则"
-  log "  - Homebrew 已安装时：回车跳过更新，输入任意字符后回车执行更新。"
-  log "  - 安装 JDK 属于脚本目标流程，会在未检测到 JDK 17 时自动执行。"
-  echo ""
+  bold_echo "🌍 JDK 17 安装脚本" | jobs_intro_style title
+  gray_echo "脚本路径：$SCRIPT_PATH" | jobs_intro_style body
+  gray_echo "日志路径：$LOG_FILE" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  note_echo "功能说明" | jobs_intro_style body
+  log "  1. 检测系统是否已经存在 JDK 17。" | jobs_intro_style body
+  log "  2. 未安装时，通过 Homebrew 自动安装。" | jobs_intro_style body
+  log "  3. 安装顺序：temurin@17 → zulu@17 → openjdk@17。" | jobs_intro_style body
+  log "  4. 若使用 openjdk@17，会尝试补齐 /usr/libexec/java_home 可识别的软链接。" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  note_echo "交互规则" | jobs_intro_style body
+  log "  - Homebrew 已安装时：回车跳过更新，输入任意字符后回车执行更新。" | jobs_intro_style body
+  log "  - 安装 JDK 属于脚本目标流程，会在未检测到 JDK 17 时自动执行。" | jobs_intro_style body
+  echo "" | jobs_intro_style body
   press_enter_to_continue "确认要继续，请按 Enter..."
   clear
 }
@@ -289,12 +312,12 @@ finish_script() {
 }
 # 打印脚本内置自述，并按运行入口决定是否等待用户确认。
 show_script_intro_and_wait() {
-  print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：install_jdk17.command'
-  print -r -- '核心用途：执行“install_jdk17”对应的自动化任务。'
-  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。'
-  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。'
-  print -r -- '============================================================================'
+  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
+  print -r -- '脚本名称：install_jdk17.command' | jobs_intro_style body
+  print -r -- '核心用途：执行“install_jdk17”对应的自动化任务。' | jobs_intro_style body
+  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。' | jobs_intro_style body
+  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
+  print -r -- '============================================================================' | jobs_intro_style title
   if [[ ! -t 0 ]]; then
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
     return 1

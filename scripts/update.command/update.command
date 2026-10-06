@@ -19,6 +19,29 @@
 # ============================================================
 
 # ---------- 基础路径 ----------
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
@@ -954,14 +977,14 @@ jobs_update_run_flutter_doctor_and_android_licenses() {
 # ---------- 内置自述 ----------
 jobs_update_show_readme_and_wait() {
   if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
-    note_echo "托管模式：已跳过完整自述确认。"
+    note_echo "托管模式：已跳过完整自述确认。" | jobs_intro_style body
     return 0
   fi
 
   clear 2>/dev/null || true
 
   {
-    cat <<'EOFREADME'
+    cat <<'EOFREADME' | jobs_intro_style auto
 ============================================================
 update.command - macOS 开发环境升级维护
 ============================================================
@@ -1004,27 +1027,27 @@ EOFREADME
 
     local pkg
     for pkg in "${BREW_CASKS[@]}"; do
-      echo "  - ${pkg}"
+      echo "  - ${pkg}" | jobs_intro_style body
     done
 
-    cat <<'EOFREADME'
+    cat <<'EOFREADME' | jobs_intro_style auto
 
 当前 BREW_FORMULAE：
 EOFREADME
 
     for pkg in "${BREW_FORMULAE[@]}"; do
-      echo "  - ${pkg}"
+      echo "  - ${pkg}" | jobs_intro_style body
     done
 
-    cat <<'EOFREADME'
+    cat <<'EOFREADME' | jobs_intro_style auto
 
 日志路径：/tmp/update.log
 ============================================================
 EOFREADME
-  } | tee -a "$LOG_FILE"
+  } | tee -a "$LOG_FILE" | jobs_intro_style auto
 
   if [[ -t 0 && "${JOBS_MAC_ENV_SKIP_README:-}" != "1" ]]; then
-    echo ""
+    echo "" | jobs_intro_style body
     local _answer=""
     IFS= read -r "_answer?👉 已阅读自述文件，按回车开始逐项更新；按 Ctrl+C 取消："
   fi
@@ -1731,16 +1754,16 @@ jobs_update_main() {
 # 打印脚本内置自述，并按运行入口决定是否等待用户确认。
 show_script_intro_and_wait() {
   if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
-    note_echo "托管模式：已跳过脚本内置自述确认。"
+    note_echo "托管模式：已跳过脚本内置自述确认。" | jobs_intro_style title
     return 0
   fi
 
-  print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：update.command'
-  print -r -- '核心用途：执行“update”对应的自动化任务。'
-  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。'
-  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。'
-  print -r -- '============================================================================'
+  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
+  print -r -- '脚本名称：update.command' | jobs_intro_style title
+  print -r -- '核心用途：执行“update”对应的自动化任务。' | jobs_intro_style body
+  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。' | jobs_intro_style body
+  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
+  print -r -- '============================================================================' | jobs_intro_style title
   if [[ ! -t 0 ]]; then
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
     return 1

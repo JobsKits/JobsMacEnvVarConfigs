@@ -7,6 +7,29 @@
 
 
 # ---------- 基础路径 ----------
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
@@ -193,31 +216,31 @@ print_engine_banner() {
 # 展示脚本用途和影响范围，并在执行前等待用户确认。
 show_readme_and_wait() {
   clear
-  highlight_echo "==================== 【MacOS】🔊Supertonic 本地朗读 ===================="
-  color_echo "用途：输入文本，调用本机 TTS 生成语音并立即播放。"
-  echo ""
-  info_echo "Supertonic 服务：${SERVER_URL}"
-  info_echo "默认虚拟环境：${SUPERTONIC_VENV_DIR}"
-  info_echo "英文等支持语言：走 Supertonic"
-  info_echo "中文：默认走 macOS say，避免 Supertonic 中文发音错误"
-  echo ""
-  note_echo "常用输入："
-  gray_echo "  直接输入文本            立即朗读，例如：fuck / 你好"
-  gray_echo "  :zh-voices              查看本机中文语音"
-  gray_echo "  :zh-voice Tingting      指定中文语音"
-  gray_echo "  :zh-rate 200            指定中文语速"
-  gray_echo "  :zh-engine say          中文走 macOS say，默认推荐"
-  gray_echo "  :zh-engine supertonic   中文也强制走 Supertonic，不推荐"
-  gray_echo "  :voice F1               切换 Supertonic 声音"
-  gray_echo "  :lang en                切换 Supertonic 语言"
-  gray_echo "  :docs                   打开本地接口文档"
-  gray_echo "  :stop                   停止本脚本启动的后台服务"
-  gray_echo "  :quit                   退出"
-  echo ""
-  warn_echo "说明：Supertonic 当前没有 zh 中文模型；中文默认交给 macOS say。"
-  gray_echo "日志：${LOG_FILE}"
-  highlight_echo "======================================================================="
-  echo ""
+  highlight_echo "==================== 【MacOS】🔊Supertonic 本地朗读 ====================" | jobs_intro_style title
+  color_echo "用途：输入文本，调用本机 TTS 生成语音并立即播放。" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  info_echo "Supertonic 服务：${SERVER_URL}" | jobs_intro_style body
+  info_echo "默认虚拟环境：${SUPERTONIC_VENV_DIR}" | jobs_intro_style body
+  info_echo "英文等支持语言：走 Supertonic" | jobs_intro_style body
+  info_echo "中文：默认走 macOS say，避免 Supertonic 中文发音错误" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  note_echo "常用输入：" | jobs_intro_style title
+  gray_echo "  直接输入文本            立即朗读，例如：fuck / 你好" | jobs_intro_style body
+  gray_echo "  :zh-voices              查看本机中文语音" | jobs_intro_style body
+  gray_echo "  :zh-voice Tingting      指定中文语音" | jobs_intro_style body
+  gray_echo "  :zh-rate 200            指定中文语速" | jobs_intro_style body
+  gray_echo "  :zh-engine say          中文走 macOS say，默认推荐" | jobs_intro_style body
+  gray_echo "  :zh-engine supertonic   中文也强制走 Supertonic，不推荐" | jobs_intro_style body
+  gray_echo "  :voice F1               切换 Supertonic 声音" | jobs_intro_style body
+  gray_echo "  :lang en                切换 Supertonic 语言" | jobs_intro_style body
+  gray_echo "  :docs                   打开本地接口文档" | jobs_intro_style body
+  gray_echo "  :stop                   停止本脚本启动的后台服务" | jobs_intro_style body
+  gray_echo "  :quit                   退出" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  warn_echo "说明：Supertonic 当前没有 zh 中文模型；中文默认交给 macOS say。" | jobs_intro_style body
+  gray_echo "日志：${LOG_FILE}" | jobs_intro_style body
+  highlight_echo "=======================================================================" | jobs_intro_style title
+  echo "" | jobs_intro_style body
   read -r "?👉 按回车进入朗读；按 Ctrl+C 取消：" _
 }
 # 收集并校验用户输入，决定后续执行路径。
@@ -765,26 +788,26 @@ moss_speak_text() {
 # 展示脚本用途和影响范围，并在执行前等待用户确认。
 moss_show_readme_and_wait() {
   clear
-  highlight_echo "==================== 【MacOS】🔊MOSS-TTS-Nano 本地朗读 ===================="
-  color_echo "用途：输入文本，调用 MOSS-TTS-Nano 生成语音并立即播放。"
-  echo ""
-  info_echo "默认仓库目录：${MOSS_TTS_NANO_HOME}"
-  info_echo "默认虚拟环境：${MOSS_TTS_NANO_VENV_DIR}"
-  info_echo "默认后端：${MOSS_TTS_NANO_BACKEND} / ${MOSS_TTS_NANO_EXECUTION_PROVIDER}"
-  info_echo "默认参考音频：${MOSS_TTS_NANO_PROMPT_SPEECH}"
-  echo ""
-  note_echo "常用输入："
-  gray_echo "  直接输入文本              立即朗读，例如：你好 / Hello"
-  gray_echo "  :prompt /path/voice.wav   指定 MOSS 参考音频"
-  gray_echo "  :backend onnx             使用 ONNX 后端，默认推荐"
-  gray_echo "  :provider cpu             ONNX CPU 推理，默认推荐"
-  gray_echo "  :config                   查看当前配置"
-  gray_echo "  :quit                     退出"
-  echo ""
-  warn_echo "说明：MOSS-TTS-Nano 首次运行会下载模型；如果网络慢，需要等待。"
-  gray_echo "日志：${LOG_FILE}"
-  highlight_echo "=========================================================================="
-  echo ""
+  highlight_echo "==================== 【MacOS】🔊MOSS-TTS-Nano 本地朗读 ====================" | jobs_intro_style title
+  color_echo "用途：输入文本，调用 MOSS-TTS-Nano 生成语音并立即播放。" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  info_echo "默认仓库目录：${MOSS_TTS_NANO_HOME}" | jobs_intro_style body
+  info_echo "默认虚拟环境：${MOSS_TTS_NANO_VENV_DIR}" | jobs_intro_style body
+  info_echo "默认后端：${MOSS_TTS_NANO_BACKEND} / ${MOSS_TTS_NANO_EXECUTION_PROVIDER}" | jobs_intro_style body
+  info_echo "默认参考音频：${MOSS_TTS_NANO_PROMPT_SPEECH}" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  note_echo "常用输入：" | jobs_intro_style title
+  gray_echo "  直接输入文本              立即朗读，例如：你好 / Hello" | jobs_intro_style body
+  gray_echo "  :prompt /path/voice.wav   指定 MOSS 参考音频" | jobs_intro_style body
+  gray_echo "  :backend onnx             使用 ONNX 后端，默认推荐" | jobs_intro_style body
+  gray_echo "  :provider cpu             ONNX CPU 推理，默认推荐" | jobs_intro_style body
+  gray_echo "  :config                   查看当前配置" | jobs_intro_style body
+  gray_echo "  :quit                     退出" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  warn_echo "说明：MOSS-TTS-Nano 首次运行会下载模型；如果网络慢，需要等待。" | jobs_intro_style body
+  gray_echo "日志：${LOG_FILE}" | jobs_intro_style body
+  highlight_echo "==========================================================================" | jobs_intro_style title
+  echo "" | jobs_intro_style body
   read -r "?👉 按回车进入朗读；按 Ctrl+C 取消：" _
 }
 # 封装 moss_show_runtime_config 对应的独立处理逻辑。
@@ -1066,30 +1089,30 @@ voxcpm_speak_text() {
 # 展示脚本用途和影响范围，并在执行前等待用户确认。
 voxcpm_show_readme_and_wait() {
   clear
-  highlight_echo "====================== 【MacOS】🔊VoxCPM2 本地朗读 ======================"
-  color_echo "用途：高质量多语言 TTS、声音设计、参考音频克隆。"
-  echo ""
-  info_echo "默认虚拟环境：${VOXCPM_VENV_DIR}"
-  info_echo "默认设备：${VOXCPM_DEVICE}（auto 会按 cuda → mps → cpu 选择）"
-  info_echo "输出目录：${VOXCPM_OUTPUT_DIR}"
-  echo ""
-  note_echo "常用输入："
-  gray_echo "  直接输入文本                    立即朗读"
-  gray_echo "  :device auto|mps|cpu|cuda       切换设备，Apple Silicon 推荐 mps"
-  gray_echo "  :control 年轻女声，温柔甜美       设置声音设计提示词"
-  gray_echo "  :reference /path/voice.wav      使用参考音频做声音克隆"
-  gray_echo "  :prompt /path/voice.wav         Hi-Fi 克隆 prompt 音频，需要配合 :prompt-text"
-  gray_echo "  :prompt-text 参考音频逐字稿       设置 Hi-Fi 克隆参考文本"
-  gray_echo "  :denoise on|off                 克隆时是否对参考音频降噪"
-  gray_echo "  :optimize on|off                控制 torch.compile；CPU/MPS 不稳时建议 off"
-  gray_echo "  :hf-mirror on|off               设置 / 取消 HF_ENDPOINT=https://hf-mirror.com"
-  gray_echo "  :config                         查看当前配置"
-  gray_echo "  :quit                           退出"
-  echo ""
-  warn_echo "说明：VoxCPM2 质量强，但模型大；首次下载慢，CPU 推理慢。普通短文本/英文轻量朗读不要默认选它。"
-  gray_echo "日志：${LOG_FILE}"
-  highlight_echo "======================================================================="
-  echo ""
+  highlight_echo "====================== 【MacOS】🔊VoxCPM2 本地朗读 ======================" | jobs_intro_style title
+  color_echo "用途：高质量多语言 TTS、声音设计、参考音频克隆。" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  info_echo "默认虚拟环境：${VOXCPM_VENV_DIR}" | jobs_intro_style body
+  info_echo "默认设备：${VOXCPM_DEVICE}（auto 会按 cuda → mps → cpu 选择）" | jobs_intro_style body
+  info_echo "输出目录：${VOXCPM_OUTPUT_DIR}" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  note_echo "常用输入：" | jobs_intro_style title
+  gray_echo "  直接输入文本                    立即朗读" | jobs_intro_style body
+  gray_echo "  :device auto|mps|cpu|cuda       切换设备，Apple Silicon 推荐 mps" | jobs_intro_style body
+  gray_echo "  :control 年轻女声，温柔甜美       设置声音设计提示词" | jobs_intro_style body
+  gray_echo "  :reference /path/voice.wav      使用参考音频做声音克隆" | jobs_intro_style body
+  gray_echo "  :prompt /path/voice.wav         Hi-Fi 克隆 prompt 音频，需要配合 :prompt-text" | jobs_intro_style body
+  gray_echo "  :prompt-text 参考音频逐字稿       设置 Hi-Fi 克隆参考文本" | jobs_intro_style body
+  gray_echo "  :denoise on|off                 克隆时是否对参考音频降噪" | jobs_intro_style body
+  gray_echo "  :optimize on|off                控制 torch.compile；CPU/MPS 不稳时建议 off" | jobs_intro_style body
+  gray_echo "  :hf-mirror on|off               设置 / 取消 HF_ENDPOINT=https://hf-mirror.com" | jobs_intro_style body
+  gray_echo "  :config                         查看当前配置" | jobs_intro_style body
+  gray_echo "  :quit                           退出" | jobs_intro_style body
+  echo "" | jobs_intro_style body
+  warn_echo "说明：VoxCPM2 质量强，但模型大；首次下载慢，CPU 推理慢。普通短文本/英文轻量朗读不要默认选它。" | jobs_intro_style body
+  gray_echo "日志：${LOG_FILE}" | jobs_intro_style body
+  highlight_echo "=======================================================================" | jobs_intro_style title
+  echo "" | jobs_intro_style body
   read -r "?👉 按回车进入朗读；按 Ctrl+C 取消：" _
 }
 # 封装 voxcpm_show_runtime_config 对应的独立处理逻辑。
@@ -1430,12 +1453,12 @@ parse_engine_args() {
 }
 # 打印脚本内置自述，并按运行入口决定是否等待用户确认。
 show_script_intro_and_wait() {
-  print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：tts.command'
-  print -r -- '核心用途：执行“tts”对应的自动化任务。'
-  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。'
-  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。'
-  print -r -- '============================================================================'
+  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
+  print -r -- '脚本名称：tts.command' | jobs_intro_style title
+  print -r -- '核心用途：执行“tts”对应的自动化任务。' | jobs_intro_style body
+  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。' | jobs_intro_style body
+  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
+  print -r -- '============================================================================' | jobs_intro_style title
   if [[ ! -t 0 ]]; then
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
     return 1

@@ -7,6 +7,29 @@
 
 
 # ---------- 基础路径 ----------
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
@@ -45,39 +68,39 @@ MODE="unquote"
 # ---------- 交互 ----------
 show_readme_and_wait() {
   clear
-  bold_echo "flat - 去乱码 / URL 解码工具"
-  gray_echo "脚本路径：$SCRIPT_PATH"
-  gray_echo "日志路径：$LOG_FILE"
-  log ""
-  note_echo "功能说明"
-  log "  1. 还原 URL 百分号编码文本，例如：%E4%BD%A0%E5%A5%BD。"
-  log "  2. 支持命令参数直接解码，也支持交互输入。"
-  log "  3. 解码结果会打印到终端。"
-  log "  4. macOS 下检测到 pbcopy 时，会自动复制结果到剪贴板。"
-  log ""
-  note_echo "常用方式"
-  log "  flat"
-  log "  flat \"%E4%BD%A0%E5%A5%BD\""
-  log "  flat --plus \"hello+world%21\""
-  log ""
-  note_echo "参数说明"
-  log "  --plus    把 + 一并解析为空格，适合表单编码文本。"
-  log "  -h        显示帮助。"
-  log "  --help    显示帮助。"
-  log ""
-  note_echo "流程"
-  log "  启动 flat"
-  log "      ↓"
-  log "  显示本内置自述并等待回车"
-  log "      ↓"
-  log "  读取参数或进入交互输入"
-  log "      ↓"
-  log "  使用 python3 或 ruby 解码"
-  log "      ↓"
-  log "  打印结果并复制到剪贴板"
+  bold_echo "flat - 去乱码 / URL 解码工具" | jobs_intro_style title
+  gray_echo "脚本路径：$SCRIPT_PATH" | jobs_intro_style body
+  gray_echo "日志路径：$LOG_FILE" | jobs_intro_style body
+  log "" | jobs_intro_style body
+  note_echo "功能说明" | jobs_intro_style body
+  log "  1. 还原 URL 百分号编码文本，例如：%E4%BD%A0%E5%A5%BD。" | jobs_intro_style body
+  log "  2. 支持命令参数直接解码，也支持交互输入。" | jobs_intro_style body
+  log "  3. 解码结果会打印到终端。" | jobs_intro_style body
+  log "  4. macOS 下检测到 pbcopy 时，会自动复制结果到剪贴板。" | jobs_intro_style body
+  log "" | jobs_intro_style body
+  note_echo "常用方式" | jobs_intro_style body
+  log "  flat" | jobs_intro_style body
+  log "  flat \"%E4%BD%A0%E5%A5%BD\"" | jobs_intro_style body
+  log "  flat --plus \"hello+world%21\"" | jobs_intro_style body
+  log "" | jobs_intro_style body
+  note_echo "参数说明" | jobs_intro_style body
+  log "  --plus    把 + 一并解析为空格，适合表单编码文本。" | jobs_intro_style body
+  log "  -h        显示帮助。" | jobs_intro_style body
+  log "  --help    显示帮助。" | jobs_intro_style body
+  log "" | jobs_intro_style body
+  note_echo "流程" | jobs_intro_style body
+  log "  启动 flat" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  显示本内置自述并等待回车" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  读取参数或进入交互输入" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  使用 python3 或 ruby 解码" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  打印结果并复制到剪贴板" | jobs_intro_style body
 
-  log ""
-  warm_echo "已阅读内置自述，按回车继续执行；按 Ctrl+C 取消。"
+  log "" | jobs_intro_style body
+  warm_echo "已阅读内置自述，按回车继续执行；按 Ctrl+C 取消。" | jobs_intro_style body
   local _answer=""
   IFS= read -r _answer
 }
@@ -226,12 +249,12 @@ interactive_loop() {
 }
 # 打印脚本内置自述，并按运行入口决定是否等待用户确认。
 show_script_intro_and_wait() {
-  print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：flat.command'
-  print -r -- '核心用途：执行“flat”对应的自动化任务。'
-  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。'
-  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。'
-  print -r -- '============================================================================'
+  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
+  print -r -- '脚本名称：flat.command' | jobs_intro_style title
+  print -r -- '核心用途：执行“flat”对应的自动化任务。' | jobs_intro_style body
+  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。' | jobs_intro_style body
+  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
+  print -r -- '============================================================================' | jobs_intro_style title
   if [[ ! -t 0 ]]; then
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
     return 1

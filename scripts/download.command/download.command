@@ -6,6 +6,29 @@
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，按 Ctrl+C 可取消。
 
 # ---------- 基础路径 ----------
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
@@ -57,16 +80,16 @@ show_script_intro_and_wait() {
   if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]]; then
     clear 2>/dev/null || true
   fi
-  highlight_echo "============================== 脚本内置自述 =============================="
-  note_echo "脚本名称：download.command"
-  note_echo "核心用途：媒体下载；默认 yt-dlp 优先，失败后可兜底自建 cobalt API。"
-  note_echo "运行策略：download URL 保持原 yt-dlp 体验；download --cobalt URL 可强制 cobalt。"
-  warn_echo "影响范围：会在当前目录写入下载文件，并访问目标站点或配置的 API。"
-  gray_echo "cobalt API：默认不调用公开托管 API；请通过 JOBS_DOWNLOAD_COBALT_API 指向自建实例。"
-  gray_echo "日志文件：${LOG_FILE}"
-  gray_echo "取消方式：确认前按 Ctrl+C 终止，不会继续执行下载业务。"
-  highlight_echo "=========================================================================="
-  echo ""
+  highlight_echo "============================== 脚本内置自述 ==============================" | jobs_intro_style title
+  note_echo "脚本名称：download.command" | jobs_intro_style title
+  note_echo "核心用途：媒体下载；默认 yt-dlp 优先，失败后可兜底自建 cobalt API。" | jobs_intro_style body
+  note_echo "运行策略：download URL 保持原 yt-dlp 体验；download --cobalt URL 可强制 cobalt。" | jobs_intro_style body
+  warn_echo "影响范围：会在当前目录写入下载文件，并访问目标站点或配置的 API。" | jobs_intro_style body
+  gray_echo "cobalt API：默认不调用公开托管 API；请通过 JOBS_DOWNLOAD_COBALT_API 指向自建实例。" | jobs_intro_style body
+  gray_echo "日志文件：${LOG_FILE}" | jobs_intro_style body
+  gray_echo "取消方式：确认前按 Ctrl+C 终止，不会继续执行下载业务。" | jobs_intro_style body
+  highlight_echo "==========================================================================" | jobs_intro_style title
+  echo "" | jobs_intro_style body
   if [[ ! -t 0 ]]; then
     error_echo "当前没有可交互输入，请在终端中重新运行。"
     exit 1

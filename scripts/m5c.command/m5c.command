@@ -7,6 +7,29 @@
 
 
 # ---------- 基础路径 ----------
+# 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+jobs_intro_style() {
+  local intro_color=0
+  if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+     [ -z "${NO_COLOR+x}" ] && [ "${PLAIN_OUTPUT:-0}" != 1 ] &&
+     [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]; then
+    intro_color=1
+  fi
+  /usr/bin/awk -v color="$intro_color" -v role="${1:-body}" '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*m", "")
+      gsub(/\\(033|e|x1[bB])\[[0-9;]*m/, "")
+      if (!color || $0 ~ /^[[:space:]]*$/) { print; next }
+      numbered = ($0 ~ /^[[:space:]➤ℹ🔹✔⚠]*([0-9]+[、.)）]|[0-9]+️⃣|[-•])/)
+      heading = ($0 ~ /^[[:space:]]*#{1,6}[[:space:]]/ || $0 ~ /[：:][[:space:]]*$/ || $0 ~ /^[[:space:]]*[=━─-]{3}/)
+      title = (!numbered && (role == "title" || heading))
+      if (role == "auto" && !seen && !numbered) title = 1
+      if ($0 !~ /^[[:space:]]*[=━─-]+[[:space:]]*$/) seen = 1
+      printf "%s%s%s\n", esc (title ? "[1;31m" : "[0;34m"), $0, esc "[0m"
+    }
+  '
+}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
@@ -42,33 +65,33 @@ underline_echo() { log "\033[4m$1\033[0m"; }            # 下划线
 # ---------- 自述 ----------
 show_readme() {
   clear
-  bold_echo "m5c - MD5 文件一致性比较工具"
-  gray_echo "脚本路径：$SCRIPT_PATH"
-  gray_echo "日志路径：$LOG_FILE"
-  log ""
-  note_echo "功能说明"
-  log "  1. 输入或拖入第一个文件路径，回车确认。"
-  log "  2. 输入或拖入第二个文件路径，回车确认。"
-  log "  3. 分别计算两个文件的 MD5。"
-  log "  4. 输出两个 MD5，并判断文件字节内容是否一致。"
-  log ""
-  note_echo "判断规则"
-  log "  - 两个文件字节内容完全一致，MD5 必然一致。"
-  log "  - MD5 一致时，日常文件校验可以认为内容相同。"
-  log "  - MD5 不适合安全签名；安全用途建议 SHA-256。"
-  log ""
-  note_echo "流程"
-  log "  启动 m5c"
-  log "      ↓"
-  log "  显示本内置自述并等待回车"
-  log "      ↓"
-  log "  输入 / 拖入第一个文件"
-  log "      ↓"
-  log "  输入 / 拖入第二个文件"
-  log "      ↓"
-  log "  计算两个文件 MD5"
-  log "      ↓"
-  log "  输出是否一致"
+  bold_echo "m5c - MD5 文件一致性比较工具" | jobs_intro_style title
+  gray_echo "脚本路径：$SCRIPT_PATH" | jobs_intro_style body
+  gray_echo "日志路径：$LOG_FILE" | jobs_intro_style body
+  log "" | jobs_intro_style body
+  note_echo "功能说明" | jobs_intro_style body
+  log "  1. 输入或拖入第一个文件路径，回车确认。" | jobs_intro_style body
+  log "  2. 输入或拖入第二个文件路径，回车确认。" | jobs_intro_style body
+  log "  3. 分别计算两个文件的 MD5。" | jobs_intro_style body
+  log "  4. 输出两个 MD5，并判断文件字节内容是否一致。" | jobs_intro_style body
+  log "" | jobs_intro_style body
+  note_echo "判断规则" | jobs_intro_style body
+  log "  - 两个文件字节内容完全一致，MD5 必然一致。" | jobs_intro_style body
+  log "  - MD5 一致时，日常文件校验可以认为内容相同。" | jobs_intro_style body
+  log "  - MD5 不适合安全签名；安全用途建议 SHA-256。" | jobs_intro_style body
+  log "" | jobs_intro_style body
+  note_echo "流程" | jobs_intro_style body
+  log "  启动 m5c" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  显示本内置自述并等待回车" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  输入 / 拖入第一个文件" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  输入 / 拖入第二个文件" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  计算两个文件 MD5" | jobs_intro_style body
+  log "      ↓" | jobs_intro_style body
+  log "  输出是否一致" | jobs_intro_style body
 }
 # 封装 press_enter_to_continue 对应的独立处理逻辑。
 press_enter_to_continue() {
@@ -199,12 +222,12 @@ compare_files() {
 }
 # 打印脚本内置自述，并按运行入口决定是否等待用户确认。
 show_script_intro_and_wait() {
-  print -r -- '============================== 脚本内置自述 =============================='
-  print -r -- '脚本名称：m5c.command'
-  print -r -- '核心用途：执行“m5c”对应的自动化任务。'
-  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。'
-  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。'
-  print -r -- '============================================================================'
+  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
+  print -r -- '脚本名称：m5c.command' | jobs_intro_style title
+  print -r -- '核心用途：执行“m5c”对应的自动化任务。' | jobs_intro_style body
+  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。' | jobs_intro_style body
+  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
+  print -r -- '============================================================================' | jobs_intro_style title
   if [[ ! -t 0 ]]; then
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
     return 1
