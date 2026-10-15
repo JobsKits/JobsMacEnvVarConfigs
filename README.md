@@ -410,12 +410,12 @@ flat --plus "hello+world%21"
 - `--plus` 会把 `+` 解析为空格，适合表单编码内容。
 - `flat` 作为去乱码入口，短、好输入，并通过 `list` 菜单展示用途，降低记忆成本。
 
-#### 3.3 `clean`：清除终端历史 + Command+K 式清屏 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+#### 3.3 `clean`：清除终端历史、用户缓存 + Command+K 式清屏 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 来源文件：
 
 ```text
-zsh/custom/shell_behavior.zsh
+scripts/clean.command/clean.command
 ```
 
 用法：
@@ -430,6 +430,7 @@ clean
 - 清空 `HISTFILE` 指向的历史文件，默认通常是 `~/.zsh_history`。
 - 顺带清空 macOS `~/.zsh_sessions/*.history`、`~/.zsh_sessions/*.historynew` 里残留的会话历史。
 - 如果检测到 Homebrew，顺手执行 `brew cleanup` 清理旧版本包和缓存。
+- 删除当前用户 `Library/Caches` 内的文件、子目录和隐藏项，保留 `Caches` 目录本身。
 - 清空当前终端可视区域。
 - 清空终端滚动缓冲区，也就是往上滚动时看到的旧输出。
 - 清屏效果按 Command+K 的目标处理：不是普通 `clear`，而是连 scrollback 一起清掉。
@@ -443,7 +444,8 @@ clean
 
 注意：
 
-- `clean` 是强清理命令，不做二次确认。
+- `clean` 先展示清理范围，按回车继续，按 `Ctrl+C` 取消；非交互环境退出。
+- 用户缓存直接删除，不经过废纸篓。缓存入口为符号链接时跳过；无权限删除的项目记录日志并继续，应用后续可能重新生成缓存。
 - `brew cleanup` 只在检测到 `brew` 时执行；如果 Homebrew 不存在或清理失败，会跳过/忽略，不阻断清屏主流程。
 - 旧历史一旦被清空，就不要指望通过方向键、`history`、`~/.zsh_history` 再找回来。
 - `clear` 只清当前可视区域，不清滚动缓冲；`clean` 使用 ANSI scrollback 清理序列和 iTerm2 ClearScrollback 扩展，目标效果对齐 Command+K。
@@ -746,7 +748,7 @@ zsh/custom/shell_behavior.zsh
 
 - 只有交互式 zsh 才执行这里面的逻辑。
 - 打开新终端时，如果存在 `~/Desktop`，默认进入桌面。
-- 定义 `clean` 函数，用于清历史、顺手执行 `brew cleanup`，并执行 Command+K 式清屏：清当前显示 + 清滚动缓冲区。
+- `clean` 由 `scripts/entrypoints.command/entrypoints.command` 注册，真实实现位于 `scripts/clean.command/clean.command`，负责清历史、清用户缓存、执行 `brew cleanup` 和 Command+K 式清屏。
 
 如果你不想打开终端默认进入桌面，直接注释这一段即可：
 
@@ -1002,7 +1004,7 @@ zsh/custom/local.zsh
 | `ipa` | 构建 Flutter iOS IPA |
 | `config` | 打开配置文件目录，优先使用 Xcode |
 | `code` | 打开 VS Code，解决终端提示 `zsh: command not found: code` 的问题 |
-| `update` | 菜单化更新 Homebrew、Android SDK、Flutter、Node、Rust、Python、Ruby、CocoaPods、OpenClaw 等模块 |
+| `update` | 按项确认更新 Homebrew、FVM / Flutter、Node、Python、Ruby、CocoaPods 等模块，支持无人值守模式 |
 | `install` | 新系统环境配置入口 |
 | `cor` | 颜色格式转换器，支持 HEX / RGB / RGBA / 0xAARRGGBB，带色块预览 |
 | `shell` | fzf 选择当前电脑扫描到的 shell，并切换默认登录 shell |

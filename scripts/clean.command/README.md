@@ -14,7 +14,7 @@ Homebrew 发现和健康检查封装在当前脚本内部，不依赖外置模�
 
 ## 一、功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-该脚本会连续完成四类清理：
+该脚本会连续完成五类清理：
 
 - 清空 zsh 历史和 `zsh_sessions` 残留。
 
@@ -23,6 +23,8 @@ Homebrew 发现和健康检查封装在当前脚本内部，不依赖外置模�
 - 定向注销 `LaunchServices` 中的非 macOS 构建 App 和 iOS Simulator App 记录。
 
 - 检测到 [**Homebrew**](https://brew.sh/) 时执行 `brew cleanup`。
+
+- 清空当前用户 `Library/Caches` 内的文件、子目录和隐藏项，保留 `Caches` 目录本身。
 
 如果当前 Homebrew 开启 tap trust 策略，脚本会在清理前自动信任已安装的 `leoafarias/fvm` tap，避免 `brew cleanup` 反复输出 `Skipping fvm: tap formula is not trusted` 警告。
 
@@ -41,7 +43,7 @@ clean
 clean [参数...]
 ```
 
-脚本会清空终端历史并移动构建产物，因此必须输入完整的 `YES` 才会继续；其它输入一律取消。
+脚本先展示清理范围，按回车继续，按 `Ctrl+C` 取消；非交互环境直接退出。用户缓存直接删除，不经过废纸篓。
 
 ## 三、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -66,7 +68,7 @@ clean [参数...]
 ```mermaid
 flowchart TD
     A([启动 clean.command])
-    B[打印脚本内置自述并等待输入 YES]
+    B[打印脚本内置自述并等待回车确认]
     A --> B
     C[清理 zsh 历史]
     B --> C
@@ -82,8 +84,10 @@ flowchart TD
     G --> H
     I[存在 brew 时执行 brew cleanup]
     H --> I
-    J([结束])
+    J[清空用户 Library/Caches 内容并保留目录]
     I --> J
+    K([结束])
+    J --> K
 ```
 
 ## 六、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
@@ -97,6 +101,10 @@ $TMPDIR/clean.log
 ## 七、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - zsh 历史会被清空，无法从脚本自动恢复。
+
+- 当前用户 `Library/Caches` 内容会直接删除，应用后续可能重新生成缓存；目录缺失时跳过，`Library` 或 `Caches` 为符号链接时跳过。缓存内容中的符号链接只删除链接本身，不清理其外部目标。
+
+- 无权限删除的缓存会保留并记录失败路径，后续清理与清屏继续执行；详细系统错误写入日志，不使用 `sudo` 提权。
 
 - 非 macOS 构建 `.app` 会离开原构建目录；它们属于可重新生成的构建产物，可从废纸篓恢复或重新构建。
 

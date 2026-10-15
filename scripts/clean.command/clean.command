@@ -1,8 +1,8 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：clean.command
-# - 核心用途：清理 zsh 历史、Homebrew 缓存和 Spotlight 中不可在 macOS 打开的开发 App 图标。
-# - 影响范围：会将 Spotlight 收录的非 macOS 构建 App 移入废纸篓、注销开发 App 记录、清空终端历史，并短暂重启 Spotlight 与 Dock。
+# - 核心用途：清理 zsh 历史、用户 Library/Caches 内容、Homebrew 缓存和 Spotlight 中不可在 macOS 打开的开发 App 图标。
+# - 影响范围：会删除用户缓存、将 Spotlight 收录的非 macOS 构建 App 移入废纸篓、注销开发 App 记录、清空终端历史，并短暂重启 Spotlight 与 Dock。
 # - 运行提示：运行后会先打印内置自述；按回车继续，按 Ctrl+C 取消。
 
 
@@ -108,11 +108,14 @@ clean - 终端清理
 
 功能：
   - 清空 zsh 历史和 zsh_sessions 残留。
+  - 删除 ${HOME}/Library/Caches 内的文件、子目录和隐藏项，保留 Caches 目录本身。
   - 将 Spotlight 收录且无法在 macOS 打开的 Apple 平台构建 App 移入废纸篓。
   - 定向注销非 macOS 构建产物与模拟器 App 的 LaunchServices 记录。
   - 检测到 Homebrew 时顺手执行 brew cleanup。
 
 说明：
+  - 用户缓存直接删除，不经过废纸篓；应用后续可能重新生成缓存。
+  - 缓存目录为符号链接时跳过；无权限删除的项目会记录日志并继续后续清理。
   - 只移动用户目录中 Build/Products 或 build/*-iphone 等开发输出下的 .app。
   - 不移动 Applications 里的正常 App，不移动 CoreSimulator 设备容器中的 App 实体。
   - 构建 App 会保留在废纸篓的 JobsClean-DevelopmentApps-* 目录中，可恢复或重新构建。
@@ -126,7 +129,7 @@ EOFREADME
     return 1
   fi
   local answer=""
-  if ! read -r "?👉 已了解会清空历史并将构建 App 移入废纸篓，按回车继续；按 Ctrl+C 取消：" answer; then
+  if ! read -r "?👉 已了解会删除用户缓存、清空历史并将构建 App 移入废纸篓，按回车继续；按 Ctrl+C 取消：" answer; then
     print -r -- '无法读取确认输入，已取消 clean，未执行任何清理。' | jobs_intro_style body
     return 1
   fi
@@ -140,6 +143,56 @@ jobs_clean_prepare_runtime() {
   set -o pipefail
   setopt NO_NOMATCH
   : > "$LOG_FILE"
+}
+# 清空当前用户缓存内容，保留目录本身且不跟随缓存入口的符号链接。
+jobs_clean_user_caches() {
+  emulate -L zsh
+  setopt PIPE_FAIL
+
+  (( JOBS_CLEAN_CONFIRMED == 1 )) || return 1
+  if [[ -z "${HOME:-}" || "$HOME" != /* || ! -d "$HOME" || "${HOME:A}" == / ]]; then
+    error_echo "用户目录无效，已跳过缓存清理。"
+    return 1
+  fi
+
+  local user_home="${HOME:A}"
+  local cache_dir="$user_home/Library/Caches"
+  if [[ -L "$user_home/Library" || -L "$cache_dir" ]]; then
+    warn_echo "缓存入口为符号链接，已跳过：$cache_dir"
+    return 1
+  fi
+  if [[ ! -e "$cache_dir" ]]; then
+    info_echo "用户缓存目录不存在，已跳过：$cache_dir"
+    return 0
+  fi
+  if [[ ! -d "$cache_dir" ]]; then
+    warn_echo "用户缓存路径不是目录，已跳过：$cache_dir"
+    return 1
+  fi
+
+  local cache_item=""
+  local -i removed_count=0
+  local -i failed_count=0
+
+  info_echo "正在清理用户缓存：$cache_dir"
+  if ! /usr/bin/find "$cache_dir" -mindepth 1 -maxdepth 1 -print0 2>> "$LOG_FILE" |
+    while IFS= read -r -d '' cache_item; do
+      if /bin/rm -rf -- "$cache_item" >> "$LOG_FILE" 2>&1; then
+        ((removed_count += 1))
+      else
+        ((failed_count += 1))
+        warn_echo "缓存删除失败，已继续：$cache_item"
+      fi
+    done; then
+    error_echo "用户缓存目录读取失败，详情见：$LOG_FILE"
+    return 1
+  fi
+
+  if (( failed_count > 0 )); then
+    warn_echo "用户缓存清理结束：已删除 ${removed_count} 项，${failed_count} 项未完全删除，详情见：$LOG_FILE"
+    return 1
+  fi
+  success_echo "用户缓存清理完成：已删除 ${removed_count} 项，保留目录：$cache_dir"
 }
 # 按 Homebrew 当前策略信任 FVM tap，避免 cleanup 扫描阶段反复提示未信任。
 jobs_clean_trust_fvm_tap_if_required() {
@@ -373,6 +426,7 @@ clean() {
   jobs_clean_unregister_non_macos_development_apps
   jobs_clean_refresh_application_lists
   jobs_clean_homebrew_cleanup
+  jobs_clean_user_caches || true
 
   HISTSIZE="$old_histsize"
   SAVEHIST="$old_savehist"
@@ -389,15 +443,15 @@ clean() {
 # ---------- 主流程统一收口 ----------
 # 为被 entrypoints.command 加载的场景编排完整 clean 流程。
 jobs_clean_main() {
-  show_script_intro_and_wait # 先说明终端历史和应用登记清理范围，并等待确认。
+  show_script_intro_and_wait # 先说明用户缓存、终端历史和应用登记清理范围，并等待确认。
   jobs_clean_prepare_runtime # 确认后再初始化 zsh 选项与本次日志。
-  clean "$@" # 清理终端历史、失效开发 App 登记和 Homebrew 缓存。
+  clean "$@" # 清理终端历史、失效开发 App 登记、Homebrew 和用户缓存。
 }
 # 统一收口可独立执行的 clean 业务流程。
 main() {
-  show_script_intro_and_wait # 先说明终端历史和应用登记清理范围，并等待确认。
+  show_script_intro_and_wait # 先说明用户缓存、终端历史和应用登记清理范围，并等待确认。
   jobs_clean_prepare_runtime # 确认后再初始化 zsh 选项与本次日志。
-  clean "$@" # 清理终端历史、失效开发 App 登记和 Homebrew 缓存。
+  clean "$@" # 清理终端历史、失效开发 App 登记、Homebrew 和用户缓存。
 }
 # 初始化脚本运行环境，并集中承载原有的顶层执行逻辑。
 initialize_script_module() {
