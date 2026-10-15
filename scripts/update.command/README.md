@@ -6,9 +6,12 @@
 
 ---
 
+> **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；脚本可单文件复制运行，不需要旁边的支持目录。终端自述确认后执行 `brew update` 更新本体及公式索引；只在指定公式 `python@3.13` 缺失、损坏或版本不满足 `3.11+` 时安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
+> 只有选中 Python 更新项后才执行内嵌预检；无人值守模式对内嵌环境层保持只读，缺失时停止该项，不借用系统 Python 绕过检查。原有其它升级项仍按自身选项运行。
+
 ## 🔥 <font id=前言>前言</font>
 
-- 采用 Shell 脚本的原因：Shell 来自 [**macOS**](https://www.apple.com/macos/) 原生系统底层，虽然写法相对繁琐冗杂，但执行效率高，并且不需要额外介入 [**Ruby**](https://www.ruby-lang.org)、[**Python**](https://www.python.org) 等第三方运行环境，因此具备更好的移植性。
+- 脚本入口使用 macOS 原生 Shell；其中的解析、转换或服务功能需要下述已验证的 Python 运行时。
 
 `update.command` 用于升级和维护 `install.command` 已安装 / 初始化过的 [**macOS**](https://www.apple.com/macos/) 开发环境。
 
@@ -113,7 +116,7 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
 - `gem` 包：[**CocoaPods**](https://cocoapods.org/)
   - 对应更新：检测已安装后，用户可写的 Gem 目录直接执行 `gem update cocoapods`；系统 Gem 目录在普通模式下使用 `sudo`，无人值守模式下使用 `sudo -n`，无授权时跳过；之后执行 `pod repo update`
 - [**Python**](https://www.python.org/) / [**pip**](https://pip.pypa.io/) / [**uv**](https://docs.astral.sh/uv/)
-  - 对应更新：按可用环境执行 `pyenv update`、`pyenv rehash`、`pipx upgrade-all`、`python3 -m pip install --upgrade pip`
+  - 对应更新：先执行内嵌运行时预检，再按已安装工具执行 `pyenv update`、`pyenv rehash`、`pipx upgrade-all`；pip 使用内嵌预检选定的 Homebrew 解释器
 - [**Dart**](https://dart.dev/) `pub` 缓存
   - 对应更新：执行 `dart pub global list`、`dart pub cache repair`
 - [**Git LFS**](https://git-lfs.com/) 初始化

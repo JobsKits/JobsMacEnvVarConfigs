@@ -1,6 +1,32 @@
 # JobsMacEnv Flutter private library. Do not call directly.
 
 # 解析 PATH 中的真实外部命令，跳过当前脚本自身，避免 flutter 自定义入口递归调用自己。
+# 输出当前脚本内的 Homebrew 健康诊断。
+jobs_brew_note() {
+  print -u2 -r -- "ℹ $*"
+}
+# 验证 Homebrew 命令和真实前缀均可用。
+jobs_brew_candidate_ok() {
+  local candidate="$1" prefix
+  [[ -n "$candidate" && -x "$candidate" ]] || return 1
+  HOMEBREW_NO_AUTO_UPDATE=1 "$candidate" --version >/dev/null 2>&1 || return 1
+  prefix="$("$candidate" --prefix 2>/dev/null)" || return 1
+  [[ "$prefix" == /* && -d "$prefix" ]]
+}
+# 在当前脚本内发现健康 Homebrew，不触发安装或升级。
+jobs_brew_find() {
+  local candidate
+  local -a candidates
+  candidates=("${JOBS_HOMEBREW_BIN:-}" "$(command -v brew 2>/dev/null)" /opt/homebrew/bin/brew /usr/local/bin/brew
+    "${JOBS_HOMEBREW_INSTALL_PREFIX:-$HOME/.local/homebrew}/bin/brew" "$HOME/.homebrew/bin/brew")
+  for candidate in "${candidates[@]}"; do
+    if jobs_brew_candidate_ok "$candidate"; then
+      print -r -- "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 jobs_flutter_find_external_command() {
   emulate -L zsh
 
@@ -63,26 +89,27 @@ jobs_flutter_get_project_dir() {
 
 # ================================== Homebrew 第三方更新（formula/cask/tap） ==================================
 jobs_flutter_brew_update_third_party() {
-  if ! command -v brew >/dev/null 2>&1; then
-    echo "⚠️  [brew] not installed, skip update"
+  local brew_bin=""
+  if ! brew_bin="$(jobs_brew_find)"; then
+    echo "⚠️  [brew] unavailable, skip update"
     return 0
   fi
 
   echo "➤ 🍺 brew update"
-  brew update || echo "⚠️  brew update failed (ignored)"
+  "$brew_bin" update || { echo "✖ brew update failed; stop further updates" >&2; return 1; }
 
   echo "➤ 📌 brew tap (refresh)"
-  brew tap --repair >/dev/null 2>&1 || true
+  "$brew_bin" tap --repair >/dev/null 2>&1 || true
 
   echo "➤ ⬆️  brew upgrade (formula + cask)"
-  brew upgrade || echo "⚠️  brew upgrade failed (ignored)"
-  brew upgrade --cask || echo "⚠️  brew upgrade --cask failed (ignored)"
+  "$brew_bin" upgrade || echo "⚠️  brew upgrade failed (ignored)"
+  "$brew_bin" upgrade --cask || echo "⚠️  brew upgrade --cask failed (ignored)"
 
   echo "➤ 🧹 brew cleanup"
-  brew cleanup || echo "⚠️  brew cleanup failed (ignored)"
+  "$brew_bin" cleanup || echo "⚠️  brew cleanup failed (ignored)"
 
   echo "➤ 🩺 brew doctor (optional)"
-  brew doctor || echo "⚠️  brew doctor warnings (ignored)"
+  "$brew_bin" doctor || echo "⚠️  brew doctor warnings (ignored)"
 
   echo "✅ brew third-party update done"
 }

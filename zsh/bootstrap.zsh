@@ -16,19 +16,37 @@ if [[ -d "$HOME/.oh-my-zsh" ]]; then
 fi
 
 # Homebrew shellenv（Apple Silicon / Intel 自动兼容）
+# 输出当前脚本内的 Homebrew 健康诊断。
+jobs_brew_note() {
+  print -u2 -r -- "ℹ $*"
+}
+# 验证 Homebrew 命令和真实前缀均可用。
+jobs_brew_candidate_ok() {
+  local candidate="$1" prefix
+  [[ -n "$candidate" && -x "$candidate" ]] || return 1
+  HOMEBREW_NO_AUTO_UPDATE=1 "$candidate" --version >/dev/null 2>&1 || return 1
+  prefix="$("$candidate" --prefix 2>/dev/null)" || return 1
+  [[ "$prefix" == /* && -d "$prefix" ]]
+}
+# 在当前脚本内发现健康 Homebrew，不触发安装或升级。
+jobs_brew_find() {
+  local candidate
+  local -a candidates
+  candidates=("${JOBS_HOMEBREW_BIN:-}" "$(command -v brew 2>/dev/null)" /opt/homebrew/bin/brew /usr/local/bin/brew
+    "${JOBS_HOMEBREW_INSTALL_PREFIX:-$HOME/.local/homebrew}/bin/brew" "$HOME/.homebrew/bin/brew")
+  for candidate in "${candidates[@]}"; do
+    if jobs_brew_candidate_ok "$candidate"; then
+      print -r -- "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 jobs_bootstrap_brew() {
-  local brew_bin=""
-
-  if [[ -x /opt/homebrew/bin/brew ]]; then
-    brew_bin="/opt/homebrew/bin/brew"
-  elif [[ -x /usr/local/bin/brew ]]; then
-    brew_bin="/usr/local/bin/brew"
-  elif command -v brew >/dev/null 2>&1; then
-    brew_bin="$(command -v brew)"
-  fi
-
-  [[ -n "$brew_bin" ]] || return 0
-  eval "$($brew_bin shellenv)"
+  local brew_bin="" brew_env=""
+  brew_bin="$(jobs_brew_find)" || return 0
+  brew_env="$("$brew_bin" shellenv)" || return 0
+  eval "$brew_env"
 }
 
 jobs_bootstrap_brew

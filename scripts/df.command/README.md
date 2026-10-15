@@ -16,6 +16,8 @@
 
 > 注意：`df` 会和 macOS 原生 `$SYSTEM_BIN_DIR/df` 磁盘空间命令重名。需要查看磁盘空间时，请用 `$SYSTEM_BIN_DIR/df -h`。
 
+当前入口内嵌完整的 [**Homebrew**](https://brew.sh/) 健康发现、必要安装及 `shellenv` 激活函数，可单独复制脚本运行，不依赖外置环境模块。健康环境直接复用；必须安装管理器时输入精确大写 `YES` 选择系统目录，其他输入选择用户目录；安装或复检失败立即停止。原软件安装确认保持“回车跳过，任意字符执行”，不升级无关公式。
+
 ## 一、适用场景 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 | 场景 | 说明 |

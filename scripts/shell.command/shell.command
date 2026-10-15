@@ -8,6 +8,32 @@
 
 # ---------- 基础路径 ----------
 # 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+# 输出当前脚本内的 Homebrew 健康诊断。
+jobs_brew_note() {
+  print -u2 -r -- "ℹ $*"
+}
+# 验证 Homebrew 命令和真实前缀均可用。
+jobs_brew_candidate_ok() {
+  local candidate="$1" prefix
+  [[ -n "$candidate" && -x "$candidate" ]] || return 1
+  HOMEBREW_NO_AUTO_UPDATE=1 "$candidate" --version >/dev/null 2>&1 || return 1
+  prefix="$("$candidate" --prefix 2>/dev/null)" || return 1
+  [[ "$prefix" == /* && -d "$prefix" ]]
+}
+# 在当前脚本内发现健康 Homebrew，不触发安装或升级。
+jobs_brew_find() {
+  local candidate
+  local -a candidates
+  candidates=("${JOBS_HOMEBREW_BIN:-}" "$(command -v brew 2>/dev/null)" /opt/homebrew/bin/brew /usr/local/bin/brew
+    "${JOBS_HOMEBREW_INSTALL_PREFIX:-$HOME/.local/homebrew}/bin/brew" "$HOME/.homebrew/bin/brew")
+  for candidate in "${candidates[@]}"; do
+    if jobs_brew_candidate_ok "$candidate"; then
+      print -r -- "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 jobs_intro_style() {
   local intro_color=0
   if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
@@ -118,9 +144,10 @@ jobs_shell_collect_candidates() {
     done < /etc/shells
   fi
 
-  if jobs_shell_has brew; then
-    brew_prefix="$(brew --prefix 2>/dev/null || true)"
-    if [[ -n "$brew_prefix" ]]; then
+  local brew_bin=""
+  if brew_bin="$(jobs_brew_find)"; then
+    brew_prefix="$("$brew_bin" --prefix 2>/dev/null || true)"
+    if [[ "$brew_prefix" == /* && -d "$brew_prefix" ]]; then
       candidates+=(
         "$brew_prefix/bin/zsh"
         "$brew_prefix/bin/bash"

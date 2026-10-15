@@ -8,6 +8,32 @@
 
 # ---------- 基础路径 ----------
 # 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
+# 输出当前脚本内的 Homebrew 健康诊断。
+jobs_brew_note() {
+  print -u2 -r -- "ℹ $*"
+}
+# 验证 Homebrew 命令和真实前缀均可用。
+jobs_brew_candidate_ok() {
+  local candidate="$1" prefix
+  [[ -n "$candidate" && -x "$candidate" ]] || return 1
+  HOMEBREW_NO_AUTO_UPDATE=1 "$candidate" --version >/dev/null 2>&1 || return 1
+  prefix="$("$candidate" --prefix 2>/dev/null)" || return 1
+  [[ "$prefix" == /* && -d "$prefix" ]]
+}
+# 在当前脚本内发现健康 Homebrew，不触发安装或升级。
+jobs_brew_find() {
+  local candidate
+  local -a candidates
+  candidates=("${JOBS_HOMEBREW_BIN:-}" "$(command -v brew 2>/dev/null)" /opt/homebrew/bin/brew /usr/local/bin/brew
+    "${JOBS_HOMEBREW_INSTALL_PREFIX:-$HOME/.local/homebrew}/bin/brew" "$HOME/.homebrew/bin/brew")
+  for candidate in "${candidates[@]}"; do
+    if jobs_brew_candidate_ok "$candidate"; then
+      print -r -- "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 jobs_intro_style() {
   local intro_color=0
   if [ -t 1 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
@@ -118,12 +144,14 @@ jobs_clean_prepare_runtime() {
 # 按 Homebrew 当前策略信任 FVM tap，避免 cleanup 扫描阶段反复提示未信任。
 jobs_clean_trust_fvm_tap_if_required() {
   emulate -L zsh
+  local brew_bin="${1:-}"
+  [[ -n "$brew_bin" ]] || brew_bin="$(jobs_brew_find)" || return 0
 
-  [[ -n "${HOMEBREW_REQUIRE_TAP_TRUST:-}" ]] || brew config 2>/dev/null | grep -Fq "HOMEBREW_REQUIRE_TAP_TRUST: set" || return 0
-  brew tap 2>/dev/null | grep -Fxq "leoafarias/fvm" || return 0
-  brew trust --json=v1 2>/dev/null | grep -Fq '"leoafarias/fvm"' && return 0
+  [[ -n "${HOMEBREW_REQUIRE_TAP_TRUST:-}" ]] || "$brew_bin" config 2>/dev/null | grep -Fq "HOMEBREW_REQUIRE_TAP_TRUST: set" || return 0
+  "$brew_bin" tap 2>/dev/null | grep -Fxq "leoafarias/fvm" || return 0
+  "$brew_bin" trust --json=v1 2>/dev/null | grep -Fq '"leoafarias/fvm"' && return 0
 
-  if brew trust --tap leoafarias/fvm >/dev/null 2>&1; then
+  if "$brew_bin" trust --tap leoafarias/fvm >/dev/null 2>&1; then
     print -P "%F{green}✔ Homebrew Tap 已信任：leoafarias/fvm%f"
   fi
 }
@@ -131,12 +159,13 @@ jobs_clean_trust_fvm_tap_if_required() {
 jobs_clean_homebrew_cleanup() {
   emulate -L zsh
 
-  command -v brew >/dev/null 2>&1 || return 0
+  local brew_bin=""
+  brew_bin="$(jobs_brew_find)" || return 0
 
-  jobs_clean_trust_fvm_tap_if_required
+  jobs_clean_trust_fvm_tap_if_required "$brew_bin"
 
   print -P "%F{blue}ℹ 正在执行 brew cleanup...%f"
-  if brew cleanup 2> >(grep -Fv "Warning: Skipping fvm: tap formula is not trusted" >&2); then
+  if "$brew_bin" cleanup 2> >(grep -Fv "Warning: Skipping fvm: tap formula is not trusted" >&2); then
     print -P "%F{green}✔ Homebrew 垃圾清理完成%f"
   else
     print -P "%F{yellow}⚠ brew cleanup 执行失败，已忽略，继续 clean%f"
