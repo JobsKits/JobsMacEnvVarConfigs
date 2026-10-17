@@ -39,6 +39,7 @@ cor
 decode
 ts
 download
+codemap
 to
 mp4
 mov
@@ -77,6 +78,8 @@ config
 ## 四、交互规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 该文件主要被 shell 配置 source 加载，不是普通一次性执行脚本。它只负责注册入口函数，不承载真实业务实现。
+
+`codemap` 由 [codemap.command](../codemap.command/README.md) 执行；不传参数时构建当前目录，传入一个或多个手工输入、拖入的目录时分别构建。入口模块仅注册函数，实际运行时由主脚本展示内置自述并等待回车。
 `mp4` / `mov` / `webm` / `mp3` 等媒体格式短命令不单独维护脚本，统一复用 `Scripts/to.command/to.command`。`gif` 已作为录制入口保留；需要转换 GIF 时使用 `to gif 文件`。
 
 

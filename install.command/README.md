@@ -12,6 +12,8 @@
 
 `install.command` 用于执行“install”对应的 MacOS 自动化流程。主脚本与本 `README.md` 必须保持在同一目录，运行前先阅读影响范围。
 
+配置同步会将 [codemap.command](../scripts/codemap.command/README.md) 部署到用户的 JobsMacEnv 脚本目录，同时注册 `codemap` 函数和终端命令。`codemap` 用于构建当前目录或指定目录的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 地图；配置同步只部署命令，不隐式安装 CodeGraph 引擎。
+
 ## 一、适用场景 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 - 需要执行“install”所描述的本机开发或维护任务。

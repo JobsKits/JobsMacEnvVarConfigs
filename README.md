@@ -18,6 +18,8 @@
 - 让系统级 `~/.zshrc` 保持轻量，只负责加载 `~/.JobsMacEnv`。
 - 支持本机私有配置和公共配置分离。
 
+- `codemap`：为当前目录或手工输入、拖入的一个或多个目录构建 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图，详见 [使用说明](./scripts/codemap.command/README.md)。配置同步会注册此命令；引擎由独立安装器安装。
+
 ## 二、目录结构 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```text
@@ -55,6 +57,9 @@
 │   │   ├── list.command            # fzf 功能菜单总入口
 │   ├── code.command/
 │   │   ├── code.command            # VS Code 命令行入口包装脚本
+│   ├── codemap.command/
+│   │   ├── codemap.command         # 当前目录或指定目录的 .codegraph 构建入口
+│   │   └── README.md
 │   ├── pods.command/
 │   │   ├── pods.command            # 本地 CocoaPods Pod 编译 / podspec lint 自检入口
 │   │   └── README.md

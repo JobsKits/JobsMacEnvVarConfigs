@@ -711,6 +711,7 @@ verify_scripts_modules() {
     ts.command
     download.command
     code.command
+    codemap.command
     to.command
     install.command
     update.command
@@ -1171,6 +1172,7 @@ install_general_bin_entries() {
   install_bin_entry "$target_scripts_dir" "$target_bin_dir" ts.command ts
   install_bin_entry "$target_scripts_dir" "$target_bin_dir" download.command download
   install_bin_entry "$target_scripts_dir" "$target_bin_dir" code.command code
+  install_bin_entry "$target_scripts_dir" "$target_bin_dir" codemap.command codemap
 }
 # 注册音视频格式转换命令入口。
 install_media_bin_entries() {

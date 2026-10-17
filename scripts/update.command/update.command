@@ -13,7 +13,7 @@
 # 说明：
 # 1. 适合 .command 双击运行，也可终端执行。
 # 2. 启动后先显示内置 README，并等待回车确认。
-# 3. 普通升级项统一为：直接回车执行升级，输入任意字符后回车跳过。
+# 3. 普通升级项统一为：直接回车跳过，输入任意字符后回车执行。
 # 4. 单项失败不阻断后续更新项，但会写入日志。
 # 5. 不存在的工具不在 update 中静默安装，只提示回到 install.command 补装。
 # ============================================================
@@ -625,8 +625,9 @@ jobs_intro_style() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
-LOG_FILE="/tmp/${SCRIPT_BASENAME}.log"
+LOG_FILE="${TMPDIR:-/tmp}/${SCRIPT_BASENAME}.log"
 JOBS_UPDATE_TRUST_MODE=0
+JOBS_UPDATE_COCOAPODS_BREW_UPDATED=0
 readonly JOBS_UPDATE_NETWORK_PROBE_URL="https://formulae.brew.sh/api/formula.jws.json"
 readonly JOBS_UPDATE_NETWORK_PROBE_BYTES=1048576
 readonly JOBS_UPDATE_NETWORK_PROBE_TIMEOUT_SECONDS=8
@@ -801,7 +802,7 @@ jobs_update_prompt_run() {
 
   echo ""
   warn_echo "强提示：${title}"
-  warm_echo "回车=执行升级 / 刷新；输入任意字符后回车=跳过"
+  warm_echo "回车=跳过；输入任意字符后回车=执行升级 / 刷新"
   gray_echo "${detail}"
 
   if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
@@ -814,9 +815,9 @@ jobs_update_prompt_run() {
     return 1
   fi
 
-  IFS= read -r answer
+  IFS= read -r answer || return 1
 
-  if [[ -z "$answer" ]]; then
+  if [[ -n "$answer" ]]; then
     return 0
   fi
 
@@ -1586,7 +1587,7 @@ update.command - macOS 开发环境升级维护
  11. npm 全局包：OpenCLI
  12. npm 全局包：CodeGraph
  13. Ruby / RubyGems
- 14. gem 包：cocoapods
+ 14. CocoaPods：识别 Homebrew / gem，实测后刷新所选公共 Specs 源
  15. Python / pip
  16. Dart pub 缓存
  17. Git LFS 初始化与大文件参数
@@ -1594,8 +1595,8 @@ update.command - macOS 开发环境升级维护
  19. 手动下载页：VS Code、Android Studio、Python
 
 交互规则：
-  - 直接回车：执行当前升级 / 刷新项
-  - 输入任意字符后回车：跳过当前项
+  - 直接回车：跳过当前项
+  - 输入任意字符后回车：执行当前升级 / 刷新项
   - 单项失败：记录警告，继续后续项
   - 工具不存在：提示回到 install.command 补装，不在 update 中静默安装
   - Homebrew：brew update 遇到 formulae.brew.sh API 下载失败时，会自动使用 HOMEBREW_NO_INSTALL_FROM_API=1 降级重试
@@ -1910,7 +1911,9 @@ jobs_update_brew_formula_one() {
     jobs_update_run_cmd "确认 Homebrew Tap：${tap_name}" brew tap "$tap_name" || true
   fi
 
-  jobs_update_run_brew_adaptive_cmd "升级 brew formula：${formula_name}" plain brew upgrade "$install_arg" || true
+  if jobs_update_run_brew_adaptive_cmd "升级 brew formula：${formula_name}" plain brew upgrade "$install_arg"; then
+    [[ "$formula_name" == cocoapods ]] && JOBS_UPDATE_COCOAPODS_BREW_UPDATED=1
+  fi
   brew_formula_after_update "$formula_name"
 }
 # 封装 jobs_update_brew_formulae 对应的独立处理逻辑。
@@ -2076,43 +2079,871 @@ jobs_update_npm_codegraph() {
     warn_echo "CodeGraph 已尝试升级，但当前 PATH 仍找不到 codegraph。建议重新打开终端或检查 npm global bin。"
   fi
 }
+# >>> Jobs Gem extension repair >>>
+# 定位 CocoaPods 所用 Ruby；无法解析时复用当前 Ruby 和现有 Homebrew Ruby。
+jobs_gemext_find_ruby() {
+  local pod_bin='' entry='' interpreter='' candidate=''
+  local -a candidates=()
+  [[ -z "${JOBS_GEMEXT_RUBY:-}" ]] || candidates+=("$JOBS_GEMEXT_RUBY")
+  pod_bin="$(whence -p pod 2>/dev/null)" || pod_bin=''
+  if [[ -n "$pod_bin" ]]; then
+    pod_bin="${pod_bin:A}"
+    for entry in "$pod_bin" "${pod_bin:h:h}/libexec/bin/pod"; do
+      [[ -f "$entry" ]] || continue
+      interpreter="$(/usr/bin/sed -n '1s/^#!//p' "$entry")"
+      [[ "$interpreter" == /*/ruby && -x "$interpreter" ]] && candidates+=("$interpreter")
+    done
+  fi
+  candidates+=("$(whence -p ruby 2>/dev/null)" /opt/homebrew/opt/ruby/bin/ruby /usr/local/opt/ruby/bin/ruby)
+  for candidate in "${candidates[@]}"; do
+    [[ -n "$candidate" && -x "$candidate" ]] || continue
+    if env -u RUBYOPT -u RUBYLIB -u RUBYGEMS_GEMDEPS -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH \
+      "$candidate" --disable-gems -rrbconfig -e 'exit(RUBY_ENGINE == "ruby" ? 0 : 1)' >/dev/null 2>&1; then
+      print -r -- "$candidate"
+      return 0
+    fi
+  done
+  print -u2 -r -- '✖ 没有找到可用的 Ruby，停止原生扩展检查。'
+  return 1
+}
+# 清理仅影响本次 worker 的 Bundler 注入，原调用终端环境保持不变。
+jobs_gemext_process() {
+  local repair_mode="${1:-check}" ruby_bin=''
+  ruby_bin="$(jobs_gemext_find_ruby)" || return 1
+  env -u RUBYOPT -u RUBYLIB -u RUBYGEMS_GEMDEPS -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH \
+    "$ruby_bin" --disable-gems - "$repair_mode" "${JOBS_GEMEXT_BACKUP_ROOT:-$HOME/.JobsMacEnv/backups/gem-native-extensions}" <<'JOBS_GEMEXT_RUBY'
+# >>> Jobs Gem extension Ruby >>>
+require 'rubygems'
+require 'rbconfig'
+require 'fileutils'
+require 'tmpdir'
+require 'open3'
+require 'rubygems/ext'
+
+# 仅重建实际缺失的本平台扩展；保留已安装版本和原 Gem 安装记录。
+class JobsGemExtensionRepair
+  FEATURES = {
+    'io-console' => ['io/console'],
+    'erb' => ['erb', 'erb/escape'],
+    'prism' => ['prism'],
+    'json' => ['json']
+  }.freeze
+  PRIORITY = %w[bigdecimal io-console json prism psych erb nkf rbs].freeze
+  CLEAN_ENV = %w[RUBYOPT RUBYLIB RUBYGEMS_GEMDEPS BUNDLE_GEMFILE BUNDLE_BIN_PATH].freeze
+
+  class << self
+    # 按当前 Ruby 的实际 Gem 搜索目录读取完整 spec，健康 / 默认 Gem 不进入修复。
+    def missing_specs
+      Gem.path.flat_map do |root|
+        Dir.glob(File.join(root, 'specifications', '*.gemspec')).map do |path|
+          spec = Gem::Specification.load(path)
+          next unless spec && !spec.default_gem? && !spec.extensions.empty? && spec.missing_extensions?
+
+          spec
+        end.compact
+      end.uniq { |spec| File.realpath(spec.loaded_from) }.sort_by do |spec|
+        [PRIORITY.index(spec.name) || PRIORITY.length, spec.name, spec.version]
+      end
+    end
+
+    # 只有确实有待修目标时，才检查本机编译工具链。
+    def preflight!
+      %w[rubyhdrdir rubyarchhdrdir].each do |key|
+        file = key == 'rubyhdrdir' ? 'ruby.h' : 'ruby/config.h'
+        raise "当前 Ruby 缺少头文件：#{key}" unless File.file?(File.join(RbConfig::CONFIG.fetch(key), file))
+      end
+      raise 'make 不可用' unless system('make', '--version', out: File::NULL, err: File::NULL)
+      if RUBY_PLATFORM.include?('darwin')
+        raise 'Xcode / Command Line Tools 的 clang 不可用' unless system('/usr/bin/xcrun', '--find', 'clang', out: File::NULL, err: File::NULL)
+      end
+    end
+
+    # 完整备份会被构建器覆盖的 Gem 源目录和当前平台目录，旧平台扩展保持原状。
+    def snapshot(spec, backup_root)
+      source = spec.full_gem_path
+      extension = spec.extension_dir
+      raise "Gem 目录不存在或为链接：#{source}" unless File.directory?(source) && !File.symlink?(source)
+      raise "Gem 目录不可写：#{source}" unless File.writable?(source) && File.writable?(File.dirname(source))
+      ancestor = File.dirname(extension)
+      ancestor = File.dirname(ancestor) until File.exist?(ancestor) || ancestor == File.dirname(ancestor)
+      raise "扩展目录不可写：#{ancestor}" unless File.writable?(ancestor)
+      raise '扩展目标不允许符号链接' if File.symlink?(extension)
+      raise '仅支持本机已有的 extconf.rb 扩展源码' unless spec.extensions.all? { |entry| entry.end_with?('extconf.rb') && File.file?(File.join(source, entry)) }
+
+      directory = Dir.mktmpdir("#{spec.full_name.gsub(/[^A-Za-z0-9_.-]/, '_')}-", backup_root)
+      saved = {
+        :directory => directory,
+        :source => source,
+        :extension => extension,
+        :extension_existed => File.exist?(extension),
+        :spec_path => spec.loaded_from,
+        :spec_bytes => File.binread(spec.loaded_from)
+      }
+      FileUtils.cp_r(source, File.join(directory, 'gem'), preserve: true)
+      FileUtils.cp_r(extension, File.join(directory, 'extension'), preserve: true) if saved[:extension_existed]
+      FileUtils.cp(spec.loaded_from, File.join(directory, 'original.gemspec'), preserve: true)
+      File.write(File.join(directory, 'manifest.txt'), saved.reject { |key, _| key == :spec_bytes }.map { |key, value| "#{key}=#{value.inspect}" }.join("\n") + "\n")
+      saved
+    end
+
+    # 使用 RubyGems 原生构建接口；不经过 Gem 安装器、插件或远程下载。
+    def build_spec(spec)
+      spec.build_extensions
+    end
+
+    # 新 Ruby 进程精确激活原版本，并确认该版本的原生二进制真正载入。
+    def verify_spec(spec)
+      environment = CLEAN_ENV.each_with_object({}) { |key, result| result[key] = nil }
+      environment['GEM_HOME'] = spec.base_dir
+      environment['GEM_PATH'] = ([spec.base_dir] + Gem.path).uniq.join(File::PATH_SEPARATOR)
+      features = FEATURES.fetch(spec.name, [spec.name.tr('-', '_')])
+      code = <<~'VERIFY'
+        require 'rubygems'
+        name, version, source, extension, *features = ARGV
+        gem name, "= #{version}"
+        spec = Gem.loaded_specs.fetch(name)
+        abort '激活了其它目录的同名 Gem' unless File.realpath(spec.full_gem_path) == File.realpath(source)
+        features.each { |feature| require feature }
+        binaries = $LOADED_FEATURES.select do |path|
+          path.match?(/\.(bundle|so)\z/) &&
+            [source, extension].any? { |root| File.expand_path(path).start_with?(File.expand_path(root) + File::SEPARATOR) }
+        end
+        expected = Dir.glob(File.join(extension, '**', '*.{bundle,so}')).map { |path| File.basename(path) }.uniq
+        loaded = binaries.map { |path| File.basename(path) }.uniq
+        abort '原生扩展未实际加载完整，或回退到了纯 Ruby 实现' if expected.empty? || !(expected - loaded).empty?
+      VERIFY
+      output, status = Open3.capture2e(environment, RbConfig.ruby, '--disable-gems', '-e', code,
+                                      spec.name, spec.version.to_s, spec.full_gem_path, spec.extension_dir, *features)
+      raise "原生扩展加载验证失败：#{output}" unless status.success?
+      true
+    end
+
+    # 将失败构建留在备份旁，恢复本目标的原目录；不回滚其它已成功目标。
+    def restore_snapshot(saved)
+      directory = saved.fetch(:directory)
+      source = saved.fetch(:source)
+      extension = saved.fetch(:extension)
+      FileUtils.mv(source, File.join(directory, 'failed-gem')) if File.exist?(source)
+      FileUtils.cp_r(File.join(directory, 'gem'), source, preserve: true)
+      FileUtils.mv(extension, File.join(directory, 'failed-extension')) if File.exist?(extension)
+      if saved[:extension_existed]
+        FileUtils.mkdir_p(File.dirname(extension))
+        FileUtils.cp_r(File.join(directory, 'extension'), extension, preserve: true)
+      end
+      if !File.file?(saved[:spec_path]) || File.binread(saved[:spec_path]) != saved[:spec_bytes]
+        FileUtils.cp(File.join(directory, 'original.gemspec'), saved[:spec_path], preserve: true)
+      end
+    end
+
+    # 每个目标先备份，构建或验证失败则恢复并明确保留排查材料。
+    def repair_spec(spec, backup_root)
+      saved = snapshot(spec, backup_root)
+      puts "➤ 重建 #{spec.full_name}；备份：#{saved[:directory]}"
+      build_spec(spec)
+      raise '构建结束后仍缺少当前平台完成标记' unless File.file?(spec.gem_build_complete_path)
+      raise 'Gem 安装记录被意外改写' unless File.binread(spec.loaded_from) == saved[:spec_bytes]
+      verify_spec(spec)
+      File.write(File.join(saved[:directory], 'result.txt'), "success\n")
+      puts "✔ #{spec.full_name}：当前平台扩展已构建并实际加载。"
+      true
+    rescue StandardError => error
+      warn "✖ #{spec.full_name}：#{error.class}: #{error.message}"
+      if saved
+        File.write(File.join(saved[:directory], 'result.txt'), "failed\n#{error.class}: #{error.message}\n")
+        begin
+          restore_snapshot(saved)
+          warn "⚠ 已恢复该 Gem 原目录；排查材料：#{saved[:directory]}"
+        rescue StandardError => restore_error
+          warn "✖ 自动恢复失败：#{restore_error.message}；完整备份：#{saved[:directory]}"
+          raise
+        end
+      end
+      false
+    end
+
+    # 持有修复锁后重新检测；健康设备不写备份、不重复编译。
+    def run(mode:, backup_root:, runtime_label: nil)
+      raise '未知执行模式' unless %w[check repair].include?(mode)
+      puts "ℹ Ruby #{RUBY_VERSION}；平台 #{Gem::Platform.local}；运行时 #{runtime_label || RbConfig.ruby}"
+      targets = missing_specs
+      puts "ℹ 当前平台缺失原生扩展：#{targets.length} 个已安装版本。"
+      targets.each { |spec| puts "  - #{spec.full_name}" }
+      return 0 if targets.empty? || mode == 'check'
+
+      preflight!
+      FileUtils.mkdir_p(backup_root)
+      File.open(File.join(backup_root, '.repair.lock'), File::RDWR | File::CREAT, 0o600) do |lock|
+        raise '另一个 Gem 扩展修复正在运行' unless lock.flock(File::LOCK_EX | File::LOCK_NB)
+
+        targets = missing_specs
+        failed = targets.reject { |spec| repair_spec(spec, backup_root) }
+        remaining = missing_specs
+        puts "ℹ 修复成功 #{targets.length - failed.length}；失败 #{failed.length}；仍缺失 #{remaining.length}。"
+        return failed.empty? && remaining.empty? ? 0 : 1
+      end
+    rescue StandardError => error
+      warn "✖ 扩展修复停止：#{error.class}: #{error.message}"
+      1
+    end
+
+    # 单文件 Shell 通过 stdin 执行；加载测试中的类定义不会启动修复。
+    def run_cli
+      $stdout.sync = true
+      $stderr.sync = true
+      exit run(mode: ARGV.fetch(0), backup_root: File.expand_path(ARGV.fetch(1)))
+    end
+  end
+end
+
+JobsGemExtensionRepair.run_cli if $PROGRAM_NAME == '-'
+# <<< Jobs Gem extension Ruby <<<
+JOBS_GEMEXT_RUBY
+}
+# <<< Jobs Gem extension repair <<<
+# 将原生扩展诊断同步写入 update 日志，并传播 worker 退出码。
+jobs_update_repair_gem_extensions() {
+  jobs_gemext_process repair 2>&1 | /usr/bin/tee -a "$LOG_FILE"
+  local -a stage_codes=("${pipestatus[@]}")
+  (( stage_codes[1] == 0 )) || return "${stage_codes[1]}"
+  return "${stage_codes[2]}"
+}
 # 封装 jobs_update_ruby_base 对应的独立处理逻辑。
 jobs_update_ruby_base() {
+  local result=0
   if jobs_update_has rbenv; then
     ensure_rbenv_init
     jobs_update_run_cmd "rbenv rehash" rbenv rehash || true
   fi
 
+  jobs_update_run_cmd '修复当前 CocoaPods / Ruby 缺失的原生 Gem 扩展' jobs_update_repair_gem_extensions || result=1
   if jobs_update_has gem; then
     jobs_update_run_cmd "gem update --system" gem update --system || true
     jobs_update_run_cmd "gem update" gem update || true
   else
     warn_echo "未检测到 gem，跳过 RubyGems 更新"
   fi
+  jobs_update_run_cmd '复检更新后的原生 Gem 扩展' jobs_update_repair_gem_extensions || result=1
+  return "$result"
 }
-# 封装 jobs_update_gem_cocoapods 对应的独立处理逻辑。
-jobs_update_gem_cocoapods() {
-  local gem_home=""
-
-  if ! jobs_update_has gem; then
-    warn_echo "gem 不存在，无法更新 cocoapods。请先确认 Ruby 环境。"
-    return 0
+# 记录选源诊断，不将可能包含凭据的 curl/git 原始错误写入日志。
+jobs_update_specs_log() {
+  print -r -- "$1" >&2
+  print -r -- "$1" >> "$LOG_FILE"
+}
+# 校验环境变量中的整数时限，避免无效参数关闭超时保护。
+jobs_update_specs_timeout() {
+  local value="$1" maximum="$2"
+  if [[ "$value" != <-> || ${#value} -gt 3 ]]; then
+    jobs_update_specs_log "⚠ CocoaPods 时限必须是 1..${maximum} 的整数：$value"
+    return 1
   fi
+  REPLY=$(( 10#$value ))
+  if (( REPLY < 1 || REPLY > maximum )); then
+    jobs_update_specs_log "⚠ CocoaPods 时限超出 1..${maximum}：$value"
+    return 1
+  fi
+  return 0
+}
+# 终止本次启动的进程树，覆盖 Git HTTP 传输与 CocoaPods 子进程。
+jobs_update_specs_terminate_tree() {
+  local process_id="$1" child_id child_list
+  [[ "$process_id" == <-> && "$process_id" -gt 1 ]] || return 0
+  child_list="$(/bin/ps -axo pid=,ppid= | /usr/bin/awk -v parent="$process_id" '$2 == parent {print $1}')"
+  for child_id in "${(@f)child_list}"; do
+    [[ -n "$child_id" ]] && jobs_update_specs_terminate_tree "$child_id"
+  done
+  kill -KILL "$process_id" 2>/dev/null || true
+}
+# 只回收当前子流程自己的进程和专属临时目录。
+jobs_update_specs_cleanup() {
+  local process_id
+  for process_id in "${specs_pids[@]}"; do
+    jobs_update_specs_terminate_tree "$process_id"
+    wait "$process_id" 2>/dev/null || true
+  done
+  if [[ -d "$specs_work_dir" && "${specs_work_dir:t}" == jobs-update-specs.* ]]; then
+    /bin/rm -r -- "$specs_work_dir"
+  fi
+}
+# 校验完整 podspec JSON，拒绝门户 HTML、空响应和普通 JSON 假阳性。
+jobs_update_specs_validate_payload() {
+  local payload="$1" payload_name payload_version
+  [[ -s "$payload" ]] || return 1
+  /usr/bin/plutil -convert xml1 -o /dev/null -- "$payload" >/dev/null 2>&1 || return 1
+  payload_name="$(/usr/bin/plutil -extract name raw -o - -- "$payload" 2>/dev/null)" || return 1
+  payload_version="$(/usr/bin/plutil -extract version raw -o - -- "$payload" 2>/dev/null)" || return 1
+  [[ "$payload_name" == AFNetworking && "$payload_version" == 4.0.1 ]]
+}
+# 对同一固定样本发送真实 GET；Git 候选额外验证 Specs 的 Git 协议。
+jobs_update_specs_probe() {
+  local candidate="$1" sample_url duration command_result=0
+  local sample_path='Specs/a/7/5/AFNetworking/4.0.1/AFNetworking.podspec.json'
+  sample_url="https://cdn.cocoapods.org/${sample_path}"
+  [[ "$candidate" == git ]] && sample_url="https://raw.githubusercontent.com/CocoaPods/Specs/master/${sample_path}"
+  curl -q --silent --show-error --fail --location \
+    --connect-timeout "$specs_connect_timeout" --max-time "$specs_probe_timeout" \
+    --output "$specs_work_dir/$candidate.json" --write-out '%{time_total}' \
+    "$sample_url" > "$specs_work_dir/$candidate.time" 2> "$specs_work_dir/$candidate.error" || command_result=$?
+  if (( command_result != 0 )); then
+    print -r -- "podspec GET 失败，curl 退出码：$command_result。" > "$specs_work_dir/$candidate.reason"
+    return 1
+  fi
+  if ! jobs_update_specs_validate_payload "$specs_work_dir/$candidate.json"; then
+    print -r -- '不是完整有效的 AFNetworking 4.0.1 podspec。' > "$specs_work_dir/$candidate.reason"
+    return 1
+  fi
+  duration="$(< "$specs_work_dir/$candidate.time")"
+  [[ ${#duration} -le 20 && "$duration" =~ '^[0-9]+([.][0-9]+)?$' ]] || return 1
+  if [[ "$candidate" == git ]]; then
+    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never \
+      git -c credential.interactive=false ls-remote --exit-code https://github.com/CocoaPods/Specs.git HEAD \
+      > "$specs_work_dir/git.head" 2> "$specs_work_dir/git.error" || command_result=$?
+    if (( command_result != 0 )) || ! /usr/bin/grep -Eq '^[0-9a-fA-F]{40,64}[[:space:]]+HEAD$' "$specs_work_dir/git.head"; then
+      print -r -- "Git ls-remote 未通过，退出码：$command_result。" > "$specs_work_dir/git.reason"
+      return 1
+    fi
+  fi
+  print -r -- "$duration" > "$specs_work_dir/$candidate.result"
+}
+# 为一个候选的 HTTP 和 Git 全过程设置墙钟时限，并回收看门狗。
+jobs_update_specs_run_candidate() (
+  trap - EXIT INT TERM
+  local candidate="$1" worker_pid timer_pid candidate_result=0
+  jobs_update_specs_probe "$candidate" &
+  worker_pid=$!
+  (
+    /bin/sleep "$specs_probe_timeout"
+    print -r -- '候选整体超时，已终止传输进程。' > "$specs_work_dir/$candidate.timeout"
+    jobs_update_specs_terminate_tree "$worker_pid"
+  ) &
+  timer_pid=$!
+  wait "$worker_pid" 2>/dev/null || candidate_result=$?
+  jobs_update_specs_terminate_tree "$timer_pid"
+  wait "$timer_pid" 2>/dev/null || true
+  if [[ -f "$specs_work_dir/$candidate.timeout" ]]; then
+    /bin/mv -- "$specs_work_dir/$candidate.timeout" "$specs_work_dir/$candidate.reason"
+    /bin/rm -f -- "$specs_work_dir/$candidate.result"
+    return 1
+  fi
+  return "$candidate_result"
+)
+# 移植 Swift 挂载脚本的同样本实测策略；双源失败时保留缓存并拒绝联网刷新。
+jobs_update_specs_select_source() (
+  local specs_mode="${JOBS_SPECS_SOURCE:-auto}" REPLY
+  local git_registered="${1:-1}"
+  local specs_probe_timeout specs_connect_timeout specs_work_dir candidate process_id reason selected
+  local -a specs_pids=()
+  case "$specs_mode" in
+    auto|cdn|git) ;;
+    *) jobs_update_specs_log '⚠ JOBS_SPECS_SOURCE 仅支持 auto、cdn、git。'; return 1 ;;
+  esac
+  jobs_update_specs_timeout "${JOBS_SPECS_PROBE_TIMEOUT:-8}" 30 || return 1
+  specs_probe_timeout="$REPLY"
+  jobs_update_specs_timeout "${JOBS_SPECS_CONNECT_TIMEOUT:-2}" 30 || return 1
+  specs_connect_timeout="$REPLY"
+  (( specs_connect_timeout > specs_probe_timeout )) && specs_connect_timeout="$specs_probe_timeout"
+  jobs_update_has curl || { jobs_update_specs_log '⚠ curl 不可用，保留 Specs 缓存。'; return 1; }
+  specs_work_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/jobs-update-specs.XXXXXXXX")" || return 1
+  trap jobs_update_specs_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  jobs_update_specs_log "ℹ CocoaPods 同样本网络探测：模式 ${specs_mode}，两源并发，每源整体限时 ${specs_probe_timeout}s。"
+  for candidate in cdn git; do
+    jobs_update_specs_run_candidate "$candidate" &
+    specs_pids+=("$!")
+  done
+  for process_id in "${specs_pids[@]}"; do
+    wait "$process_id" 2>/dev/null || true
+  done
+  specs_pids=()
+  for candidate in cdn git; do
+    if [[ -f "$specs_work_dir/$candidate.result" ]]; then
+      jobs_update_specs_log "✔ $candidate 可用，相同 podspec GET 耗时：$(< "$specs_work_dir/$candidate.result")s。"
+    else
+      reason='没有有效结果。'
+      [[ -s "$specs_work_dir/$candidate.reason" ]] && reason="$(< "$specs_work_dir/$candidate.reason")"
+      jobs_update_specs_log "⚠ $candidate 不可用：$reason"
+    fi
+  done
+  if [[ "$specs_mode" != auto ]]; then
+    selected="$specs_mode"
+  elif [[ -f "$specs_work_dir/cdn.result" && -f "$specs_work_dir/git.result" ]]; then
+    selected=cdn
+    if (( $(< "$specs_work_dir/git.result") < $(< "$specs_work_dir/cdn.result") * 0.85 )); then
+      selected=git
+    fi
+  elif [[ -f "$specs_work_dir/cdn.result" ]]; then
+    selected=cdn
+  else
+    selected=git
+  fi
+  if [[ "$specs_mode" == auto && "$selected" == git && "$git_registered" == 0 && -f "$specs_work_dir/cdn.result" ]]; then
+    selected=cdn
+    jobs_update_specs_log 'ℹ Git 小文件更快但尚无本地 Git Specs；改用已通过探测的 CDN，避免冷克隆。'
+  fi
+  if [[ ! -f "$specs_work_dir/$selected.result" ]]; then
+    jobs_update_specs_log '⚠ 本次没有通过探测的所选源；保留现有缓存，跳过 Specs 刷新。网络尚未恢复。'
+    return 1
+  fi
+  jobs_update_specs_log "✔ 本次只刷新 $selected 公共源；此探测不保证大仓库克隆或具体 Pod 源码下载成功。"
+  print -r -- "$selected"
+)
+# 给真实源刷新设置独立总时限，禁止凭据交互，不改全局 Git 或代理配置。
+jobs_update_specs_run_cmd() (
+  local desc="$1" REPLY specs_update_timeout specs_work_dir worker_pid timer_pid command_result=0
+  local -a specs_pids=()
+  shift
+  jobs_update_specs_timeout "${JOBS_SPECS_UPDATE_TIMEOUT:-120}" 900 || return 1
+  specs_update_timeout="$REPLY"
+  specs_work_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/jobs-update-specs.XXXXXXXX")" || return 1
+  trap jobs_update_specs_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  jobs_update_run_cmd "$desc（总时限 ${specs_update_timeout}s）" env \
+    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never \
+    GIT_HTTP_LOW_SPEED_LIMIT=1024 GIT_HTTP_LOW_SPEED_TIME=30 "$@" &
+  worker_pid=$!
+  specs_pids+=("$worker_pid")
+  (
+    /bin/sleep "$specs_update_timeout"
+    : > "$specs_work_dir/refresh.timeout"
+    jobs_update_specs_terminate_tree "$worker_pid"
+  ) &
+  timer_pid=$!
+  specs_pids+=("$timer_pid")
+  wait "$worker_pid" 2>/dev/null || command_result=$?
+  jobs_update_specs_terminate_tree "$timer_pid"
+  wait "$timer_pid" 2>/dev/null || true
+  specs_pids=()
+  if [[ -f "$specs_work_dir/refresh.timeout" ]]; then
+    warn_echo "Specs 刷新超过 ${specs_update_timeout}s，已停止本次进程；保留现有源与缓存，未完成刷新。"
+    return 124
+  fi
+  return "$command_result"
+)
+# 在独立 Ruby 中复用工程网络模块，只输出状态及私有 NUL 环境载荷。
+jobs_update_pod_network_payload() {
+  local payload_path="$1" ruby_bin
+  ruby_bin="$(jobs_gemext_find_ruby)" || return 1
+  env -u RUBYOPT -u RUBYLIB -u RUBYGEMS_GEMDEPS -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH \
+    "$ruby_bin" - "$payload_path" "$PWD" 2>/dev/null <<'JOBS_UPDATE_POD_NETWORK_RUBY'
+# >>> Jobs CocoaPods network module >>>
+# frozen_string_literal: true
 
-  if gem list -i cocoapods >/dev/null 2>&1; then
+require 'uri'
+
+# 仅为本次依赖安装复用真实可用的 Git 链路，不改系统或全局 Git 配置。
+module JobsCocoaPodsNetwork
+  PROBE_URL = 'https://github.com/andreamazz/AMPopTip.git'.freeze
+  PROBE_REF = 'refs/tags/4.12.0'.freeze
+  DEFAULT_PROBE_TIMEOUT = 6
+  OUTPUT_LIMIT = 4096
+  PROXY_KEYS = %w[https_proxy HTTPS_PROXY http_proxy HTTP_PROXY all_proxy ALL_PROXY].freeze
+  GIT_PROXY_KEY = 'http.https://github.com/.proxy'.freeze
+
+  module_function
+
+  # Podfile 在 Specs 选择前调用；查询命令与重复解析都不额外联网。
+  def apply!(project_root:, probe: nil)
+    return :skipped if ENV['JOBS_POD_NETWORK_ADAPT'] == '0' || probe == false || (probe.nil? && !dependency_command?)
+
+    project_root = File.expand_path(project_root)
+    @results ||= {}
+    return @results[project_root] if @results.key?(project_root)
+
+    timeout = probe_timeout
+    runner = probe.respond_to?(:call) ? probe : method(:git_route_usable?)
+    explicit = ENV['JOBS_POD_PROXY_URL'].to_s.strip
+    if !explicit.empty? && valid_proxy_url?(explicit)
+      route = proxy_route(:explicit, explicit)
+      return remember_route(project_root, route) if route && usable?(runner, route, project_root, timeout)
+
+      log('显式 JOBS_POD_PROXY_URL 未通过 Git tag 探测，继续检查当前链路。')
+    elsif !explicit.empty?
+      log('JOBS_POD_PROXY_URL 格式无效，继续检查当前链路；未输出代理内容。')
+    end
+
+    inherited = { kind: :inherited, environment: {} }
+    return remember_route(project_root, inherited) if usable?(runner, inherited, project_root, timeout)
+
+    routes = system_proxy_routes(timeout).reject { |route| route[:proxy] == explicit }
+    results = routes.map do |route|
+      Thread.new { [route, usable?(runner, route, project_root, timeout)] }
+    end.map(&:value)
+    selected = results.find { |_route, successful| successful }
+    return remember_route(project_root, selected.first) if selected
+
+    log('当前链路和已配置代理均未通过 Git tag 探测；继续交给源码归档回退及 CocoaPods，不代表安装成功。')
+    @results[project_root] = :unavailable
+  rescue StandardError
+    log('网络适配未完成，保留现有环境继续安装；未输出可能含凭据的错误内容。')
+    :unavailable
+  end
+
+  # 只接受真正的 CocoaPods 安装或升级，ipc/spec 等查询不触发网络。
+  def dependency_command?
+    command = ARGV.find { |argument| !argument.start_with?('-') }
+    File.basename($PROGRAM_NAME) == 'pod' && %w[install update].include?(command)
+  end
+
+  # 对每个独立进程组设置短上限，系统候选并发，共享同一轮等待时间。
+  def probe_timeout
+    value = ENV['JOBS_POD_NETWORK_PROBE_TIMEOUT'] || ENV['JOB_POD_NETWORK_PROBE_TIMEOUT']
+    value.to_s.match?(/\A\d+\z/) && (1..30).cover?(value.to_i) ? value.to_i : DEFAULT_PROBE_TIMEOUT
+  end
+
+  # 显式环境 URL 可以包含凭据，但控制字符、无效端口与未知协议被拒绝。
+  def valid_proxy_url?(value)
+    return false if value.match?(/[\x00-\x20\x7f]/)
+
+    uri = URI.parse(value)
+    %w[http https socks5 socks5h].include?(uri.scheme) &&
+      uri.host && !uri.host.empty? && (1..65_535).cover?(uri.port.to_i) &&
+      ['', '/'].include?(uri.path.to_s) && !uri.query && !uri.fragment
+  rescue URI::Error, ArgumentError
+    false
+  end
+
+  # 仅读取 macOS 已开启的手工代理，不执行 PAC、不猜端口。
+  def system_proxy_routes(timeout)
+    return [] unless File.executable?('/usr/sbin/scutil')
+
+    output, successful, = run_bounded({}, ['/usr/sbin/scutil', '--proxy'], nil, [timeout, 1].min)
+    return [] unless successful
+
+    parse_system_proxies(output).each_with_object([]) do |(kind, proxy), routes|
+      route = proxy_route(kind, proxy)
+      routes << route if route
+    end
+  end
+
+  # scutil 的 HTTPSProxy 表示 HTTP CONNECT；SOCKS 使用远端 DNS。
+  def parse_system_proxies(output)
+    values = {}
+    depth = 0
+    output.each_line do |line|
+      match = line.match(/\A\s*(HTTPSEnable|HTTPSProxy|HTTPSPort|HTTPEnable|HTTPProxy|HTTPPort|SOCKSEnable|SOCKSProxy|SOCKSPort)\s*:\s*(.*?)\s*\z/) if depth <= 1
+      values[match[1]] = match[2] if match
+      depth += line.count('{') - line.count('}')
+    end
+    routes = []
+    %w[HTTPS HTTP SOCKS].each do |kind|
+      next unless values["#{kind}Enable"] == '1'
+
+      host = values["#{kind}Proxy"].to_s
+      port = values["#{kind}Port"].to_s
+      next unless host.match?(/\A[A-Za-z0-9._:\[\]-]+\z/) && port.match?(/\A\d+\z/)
+
+      host = "[#{host}]" if host.include?(':') && !host.start_with?('[')
+      proxy = "#{kind == 'SOCKS' ? 'socks5h' : 'http'}://#{host}:#{port}"
+      routes << ["system_#{kind.downcase}".to_sym, proxy] if valid_proxy_url?(proxy)
+    end
+    routes.uniq { |_kind, proxy| proxy }
+  end
+
+  # 追加 GitHub 范围的临时配置，既有私有域配置与 NO_PROXY 均保留。
+  def proxy_route(kind, proxy)
+    count = ENV.fetch('GIT_CONFIG_COUNT', '0')
+    return nil unless count.match?(/\A\d+\z/)
+
+    index = count.to_i
+    environment = PROXY_KEYS.each_with_object({}) { |key, result| result[key] = proxy }
+    environment['GIT_CONFIG_COUNT'] = (index + 1).to_s
+    environment["GIT_CONFIG_KEY_#{index}"] = GIT_PROXY_KEY
+    environment["GIT_CONFIG_VALUE_#{index}"] = proxy
+    { kind: kind, proxy: proxy, environment: environment }
+  end
+
+  # 探测失败只返回状态，原始 stderr 与代理 URL 不进入日志。
+  def usable?(runner, route, project_root, timeout)
+    runner.call(environment: route[:environment].dup, project_root: project_root, timeout: timeout) == true
+  rescue StandardError
+    false
+  end
+
+  # Git 协议必须返回指定 tag 的对象 ID，HTTP 首页成功不能代替此检查。
+  def git_route_usable?(environment:, project_root:, timeout:)
+    environment = environment.merge(
+      'GIT_TERMINAL_PROMPT' => '0', 'GCM_INTERACTIVE' => 'never',
+      'GIT_ASKPASS' => '/usr/bin/false', 'SSH_ASKPASS' => '/usr/bin/false'
+    )
+    output, successful, = run_bounded(
+      environment, ['git', '-c', 'credential.interactive=false', 'ls-remote', '--exit-code', PROBE_URL, PROBE_REF], project_root, timeout
+    )
+    successful && output.lines.any? do |line|
+      line.match?(/\A[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?\s+#{Regexp.escape(PROBE_REF)}\s*\z/)
+    end
+  end
+
+  # 当前 pod 进程及其子进程继承代理；退出时恢复原环境，不写磁盘配置。
+  def remember_route(project_root, route)
+    unless route[:kind] == :inherited
+      @original_environment ||= {}
+      route[:environment].each do |key, value|
+        @original_environment[key] = ENV[key] unless @original_environment.key?(key)
+        ENV[key] = value
+      end
+      unless @restore_registered
+        at_exit { restore! }
+        @restore_registered = true
+      end
+    end
+    message = case route[:kind]
+              when :inherited then '已复用当前 Git 下载链路。'
+              when :explicit then '已验证显式 JOBS_POD_PROXY_URL，仅本次 pod 进程使用。'
+              else '已验证并临时继承 macOS 已开启的系统代理，仅本次 pod 进程使用。'
+              end
+    log(message)
+    @results[project_root] = route[:kind] == :inherited ? :inherited : :proxy
+  end
+
+  # 隔离测试及进程退出共用恢复入口，只还原本模块实际覆盖的环境项。
+  def restore!
+    (@original_environment || {}).each { |key, value| ENV[key] = value }
+    @original_environment = {}
+    @results = {}
+    nil
+  end
+
+  # 输出有上限且 stderr 丢弃；退出上限包含继承输出管道的子进程。
+  def run_bounded(environment, command, project_root, timeout)
+    reader, writer = IO.pipe
+    options = { in: File::NULL, out: writer, err: File::NULL, pgroup: true }
+    options[:chdir] = project_root if project_root
+    pid = Process.spawn(environment, *command, options)
+    writer.close
+    waiter = Process.detach(pid)
+    capture = { text: ''.dup, overflow: false }
+    output_reader = Thread.new { capture_stdout(reader, capture) }
+    deadline = monotonic_time + timeout
+    timed_out = false
+    while waiter.alive? || output_reader.alive?
+      if monotonic_time >= deadline
+        timed_out = true
+        signal_group('TERM', pid)
+        (output_reader.alive? ? output_reader : waiter).join(0.1)
+        signal_group('KILL', pid)
+        break
+      end
+      (waiter.alive? ? waiter : output_reader).join([deadline - monotonic_time, 0.02].min.clamp(0, 0.02))
+    end
+    waiter.join(0.2)
+    reader.close unless reader.closed?
+    output_reader.join(0.2)
+    successful = !timed_out && !capture[:overflow] && !waiter.alive? && waiter.value.success?
+    [capture[:text], successful, timed_out]
+  rescue StandardError
+    ['', false, false]
+  ensure
+    [reader, writer].compact.each { |stream| stream.close unless stream.closed? }
+    if pid && (waiter.nil? || waiter.alive? || (output_reader && output_reader.alive?))
+      signal_group('KILL', pid)
+    end
+    output_reader.join(0.2) if output_reader
+  end
+
+  # 始终读完有界缓冲，避免子进程因 stdout 写满而卡住。
+  def capture_stdout(stream, capture)
+    loop do
+      chunk = stream.readpartial(1024)
+      remaining = OUTPUT_LIMIT - capture[:text].bytesize
+      capture[:text] << chunk.byteslice(0, remaining) if remaining.positive?
+      capture[:overflow] = true if chunk.bytesize > remaining
+    end
+  rescue EOFError, IOError
+    nil
+  end
+
+  # 独立进程组连同 Git helper 一起退出，已结束的进程属于正常竞态。
+  def signal_group(signal, pid)
+    Process.kill(signal, -pid)
+  rescue Errno::ESRCH, Errno::EPERM
+    nil
+  end
+
+  # 单调时钟避免系统校时改变探测时限。
+  def monotonic_time
+    Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+
+  # 日志只陈述链路状态，不泄露代理地址、凭据或原始子进程错误。
+  def log(message)
+    $stderr.puts("[Jobs Pod 网络] #{message}")
+  end
+end
+# <<< Jobs CocoaPods network module <<<
+
+# >>> Jobs update Pod network handoff >>>
+begin
+  original_environment = ENV.to_h
+  result = JobsCocoaPodsNetwork.apply!(project_root: ARGV.fetch(1), probe: true)
+  raise 'unknown network result' unless %i[skipped inherited proxy unavailable].include?(result)
+
+  changes = if result == :proxy
+              ENV.select do |key, value|
+                (JobsCocoaPodsNetwork::PROXY_KEYS.include?(key) || key.match?(/\AGIT_CONFIG_(?:COUNT|KEY_\d+|VALUE_\d+)\z/)) &&
+                  original_environment[key] != value
+              end
+            else
+              {}
+            end
+  File.open(ARGV.fetch(0), 'wb', 0o600) do |file|
+    changes.each { |key, value| file.write("#{key}\0#{value}\0") }
+  end
+  puts result
+rescue StandardError
+  exit 1
+end
+# <<< Jobs update Pod network handoff <<<
+JOBS_UPDATE_POD_NETWORK_RUBY
+}
+# 先完整校验受控键值，再导出；NUL 载荷不会作为 Shell 代码执行。
+jobs_update_pod_network_apply_payload() {
+  local payload_path="$1" route_key='' route_value='' index
+  local -a route_keys=() route_values=()
+  while true; do
+    route_key=''
+    IFS= read -r -d '' route_key || { [[ -z "$route_key" ]] && break; return 1; }
+    IFS= read -r -d '' route_value || return 1
+    case "$route_key" in
+      https_proxy|HTTPS_PROXY|http_proxy|HTTP_PROXY|all_proxy|ALL_PROXY|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_<->|GIT_CONFIG_VALUE_<->) ;;
+      *) return 1 ;;
+    esac
+    route_keys+=("$route_key")
+    route_values+=("$route_value")
+  done < "$payload_path"
+  for (( index=1; index<=${#route_keys}; index++ )); do
+    export "${route_keys[$index]}=${route_values[$index]}"
+  done
+}
+# 子流程退出时删除可能含认证值的私有载荷，不影响其它临时文件。
+jobs_update_pod_network_cleanup() {
+  if [[ -n "$jobs_pod_route_payload" && "${jobs_pod_route_payload:t}" == jobs-update-pod-route.* ]]; then
+    /bin/rm -f -- "$jobs_pod_route_payload"
+  fi
+}
+# 在本次 Specs 作用域内准备已有代理，失败时保留原环境继续真实选源。
+jobs_update_pod_network_prepare() {
+  local route_result=''
+  jobs_pod_route_payload="$(/usr/bin/mktemp "${TMPDIR:-/tmp}/jobs-update-pod-route.XXXXXXXX")" || {
+    jobs_update_specs_log '⚠ 无法创建私有网络载荷，沿用当前环境继续 Specs 实测。'
+    return 0
+  }
+  route_result="$(jobs_update_pod_network_payload "$jobs_pod_route_payload")" || route_result=failed
+  case "$route_result" in
+    proxy)
+      if jobs_update_pod_network_apply_payload "$jobs_pod_route_payload"; then
+        jobs_update_specs_log '✔ 已验证已有代理，本次 Specs 探测与 repo 命令继承相同环境。'
+      else
+        jobs_update_specs_log '⚠ 网络载荷校验失败，沿用原环境继续 Specs 实测；未认定代理可用。'
+      fi
+      ;;
+    inherited) jobs_update_specs_log 'ℹ 已验证并复用当前 Git 链路，继续 Specs 实测。' ;;
+    skipped) jobs_update_specs_log 'ℹ 已关闭 CocoaPods 代理适配，沿用当前环境进行 Specs 实测。' ;;
+    unavailable) jobs_update_specs_log '⚠ 当前 Git 链路和已配置代理未通过验证，沿用原环境继续 Specs 实测；网络尚未恢复。' ;;
+    *) jobs_update_specs_log '⚠ CocoaPods 网络适配未完成，沿用原环境继续 Specs 实测；未认定代理可用。' ;;
+  esac
+  jobs_update_pod_network_cleanup
+  jobs_pod_route_payload=''
+}
+# 同一子 Shell 内准备代理、选择公共源并刷新；返回后父环境完全不变。
+jobs_update_cocoapods_repos() (
+  local selected source_list source_name='' source_url='' row repo_name='' cdn_repo='' git_repo=''
+  local git_registered=0 result=0 jobs_pod_route_payload=''
+  trap jobs_update_pod_network_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  jobs_update_pod_network_prepare
+  source_list="$(pod repo list --no-ansi 2>/dev/null)" || { warn_echo '无法读取 CocoaPods 源清单，停止 Specs 刷新。'; return 1; }
+  for row in "${(@f)source_list}"; do
+    if [[ "$row" == '- URL:'* ]]; then
+      source_url="${row#'- URL:'}"
+      source_url="${source_url#"${source_url%%[![:space:]]*}"}"
+      source_url="${source_url:l}"
+      while [[ "$source_url" == */ ]]; do
+        source_url="${source_url%/}"
+      done
+      if [[ -n "$source_name" && "$source_name" != -* && "$source_name" != *$'\t'* ]]; then
+        case "$source_url" in
+          https://cdn.cocoapods.org) [[ -n "$cdn_repo" ]] || cdn_repo="$source_name" ;;
+          https://github.com/cocoapods/specs.git|https://github.com/cocoapods/specs)
+            [[ -n "$git_repo" ]] || git_repo="$source_name"
+            ;;
+        esac
+      fi
+    elif [[ -n "$row" && "$row" != '- '* && "$row" != [[:space:]]* ]]; then
+      source_name="$row"
+    fi
+  done
+  [[ -n "$git_repo" ]] && git_registered=1
+  selected="$(jobs_update_specs_select_source "$git_registered")" || return 1
+  case "$selected" in
+    cdn) repo_name="$cdn_repo" ;;
+    git) repo_name="$git_repo" ;;
+    *) return 1 ;;
+  esac
+  if [[ -z "$repo_name" ]]; then
+    if [[ "$selected" == git ]]; then
+      warn_echo '所选 GitHub Specs 尚无本地源；升级入口不冷克隆巨大 Specs 仓库，本次未刷新。'
+      return 1
+    fi
+    repo_name='jobs-public-cdn'
+    while print -r -- "$source_list" | /usr/bin/grep -Fxq -- "$repo_name"; do
+      repo_name="${repo_name}-cdn"
+    done
+    jobs_update_specs_run_cmd '登记官方 CDN（保留已有源）' pod repo add-cdn "$repo_name" https://cdn.cocoapods.org/ || return $?
+  fi
+  jobs_update_specs_run_cmd "刷新 CocoaPods 公共源：$repo_name" pod repo update "$repo_name" || result=$?
+  return "$result"
+)
+# 按已安装的包管理器更新 CocoaPods，再独立按网络实测刷新公共规格源。
+jobs_update_gem_cocoapods() {
+  local gem_home='' brew_bin='' brew_prefix='' pod_bin='' result=0 brew_managed=0 gem_installed=0
+  pod_bin="$(whence -p pod 2>/dev/null)" || pod_bin=''
+  if jobs_update_has gem && gem list -i '^cocoapods$' >/dev/null 2>&1; then
+    gem_installed=1
+  fi
+  brew_bin="$(find_brew_bin)" || brew_bin=''
+  if [[ -n "$brew_bin" ]] && "$brew_bin" list --formula --versions cocoapods >/dev/null 2>&1; then
+    brew_prefix="$("$brew_bin" --prefix cocoapods 2>/dev/null)" || brew_prefix=''
+    if [[ -z "$pod_bin" || ( -n "$brew_prefix" && "${pod_bin:A}" == "${brew_prefix:A}/"* ) ]]; then
+      brew_managed=1
+    elif (( gem_installed == 0 )); then
+      warn_echo 'Homebrew 已安装 CocoaPods，但当前 pod 不属于该 formula；无法确认工具归属，跳过本体升级。'
+      result=1
+    fi
+  fi
+  if (( brew_managed == 1 )); then
+    if (( JOBS_UPDATE_COCOAPODS_BREW_UPDATED == 1 )); then
+      info_echo 'CocoaPods 已在本轮 Homebrew formula 阶段升级，继续维护规格源。'
+    elif jobs_update_run_brew_adaptive_cmd '升级 Homebrew CocoaPods' plain "$brew_bin" upgrade cocoapods; then
+      JOBS_UPDATE_COCOAPODS_BREW_UPDATED=1
+    else
+      result=1
+    fi
+  fi
+  if (( brew_managed == 0 && gem_installed == 1 )); then
     gem_home="$(gem env home 2>/dev/null || true)"
     if [[ -n "$gem_home" && -w "$gem_home" ]]; then
-      jobs_update_run_cmd "更新 gem 包 cocoapods" gem update cocoapods || true
+      jobs_update_run_cmd "更新 gem 包 cocoapods" gem update cocoapods || result=1
     else
-      jobs_update_run_sudo_cmd "更新系统 gem 包 cocoapods" gem update cocoapods || true
+      jobs_update_run_sudo_cmd "更新系统 gem 包 cocoapods" gem update cocoapods || result=1
+    fi
+  elif (( brew_managed == 0 && result == 0 )); then
+    warn_echo '当前 Homebrew / RubyGems 未登记 CocoaPods，跳过工具升级；已有 pod 命令仍可维护规格源。'
+  fi
+  if jobs_update_has pod; then
+    if jobs_update_run_cmd '复检 CocoaPods 所用 Ruby 的原生扩展' jobs_update_repair_gem_extensions; then
+      jobs_update_cocoapods_repos || result=1
+    else
+      warn_echo '原生扩展修复未完成，跳过本次规格源刷新。'
+      result=1
     fi
   else
-    warn_echo "未检测到 gem 包 cocoapods，跳过升级。请运行 install.command 补装。"
+    warn_echo '当前 PATH 找不到 pod，无法刷新规格源；请先检查 CocoaPods 安装与 PATH。'
+    result=1
   fi
-
-  if jobs_update_has pod; then
-    jobs_update_run_cmd "pod repo update" pod repo update || true
-  fi
+  return "$result"
 }
 # 封装 jobs_update_python_base 对应的独立处理逻辑。
 jobs_update_python_base() {
@@ -2209,6 +3040,7 @@ jobs_update_manual_download_pages() {
 # ---------- 命令实现 ----------
 update() {
   local ran_count=0
+  JOBS_UPDATE_COCOAPODS_BREW_UPDATED=0
 
   if jobs_update_prompt_run "是否更新 Xcode Command Line Tools / macOS softwareupdate？" "对应 install.command：Xcode Command Line Tools。"; then
     jobs_update_run_step "Xcode Command Line Tools / softwareupdate 更新" jobs_update_clt
@@ -2270,12 +3102,12 @@ update() {
     (( ran_count++ ))
   fi
 
-  if jobs_update_prompt_run "是否更新 Ruby / RubyGems？" "覆盖 install.command 中的 brew formula：ruby / rbenv 的后续维护。"; then
+  if jobs_update_prompt_run "是否更新 Ruby / RubyGems？" "维护 ruby / rbenv；前后检查 CocoaPods 所用 Ruby 的原生扩展，缺失时备份重建。"; then
     jobs_update_run_step "Ruby / RubyGems 更新" jobs_update_ruby_base
     (( ran_count++ ))
   fi
 
-  if jobs_update_prompt_run "是否更新 CocoaPods？" "对应 install.command：gem 包 cocoapods，并执行 pod repo update。"; then
+  if jobs_update_prompt_run "是否更新 CocoaPods？" "识别 Homebrew / gem 安装；实测 CDN / GitHub 后仅刷新所选公共源，失败保留缓存。"; then
     jobs_update_run_step "CocoaPods 更新" jobs_update_gem_cocoapods
     (( ran_count++ ))
   fi
@@ -2365,8 +3197,8 @@ initialize_script_module() {
   set -u
   set -o pipefail
   setopt NO_NOMATCH
-  : > "$LOG_FILE"
   if [[ "${JOBS_MAC_ENV_SOURCE_MODE:-}" != "1" ]]; then
+    : > "$LOG_FILE"
     main "$@"
   fi
 }

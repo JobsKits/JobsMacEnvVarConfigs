@@ -62,6 +62,8 @@ URL 解码：decode
 转 OPUS：opus
 转 GIF：to gif
 媒体下载：download
+VS Code：code
+代码地图：codemap
 环境安装：install
 环境更新：update
 Shell 切换：shell

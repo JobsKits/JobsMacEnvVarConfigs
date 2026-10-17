@@ -467,6 +467,7 @@ URL 解码	decode	交互式 URL Decode，并自动复制到剪贴板	script	deco
 转 GIF	to gif	调用 to.command 转为 GIF；不抢占原 gif 录制命令	to_format	gif
 媒体下载	download	媒体下载；yt-dlp 优先，并可在配置 cobalt API 后兜底	script	download.command
 VS Code	code	打开 VS Code；支持 code . 和 code 文件路径	script	code.command
+代码地图	codemap	为当前目录或传入多个目录构建 .codegraph 代码地图	script	codemap.command
 环境安装	install	新系统开发环境配置 / 依赖安装入口	script	install.command
 环境更新	update	JobsMacEnv 更新菜单，批量更新开发工具链	script	update.command
 Shell 切换	shell	扫描并切换可用 shell	script	shell.command

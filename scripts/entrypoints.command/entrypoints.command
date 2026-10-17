@@ -132,6 +132,8 @@ download() { _jobs_run_scripts_command download "$@"; }
 to() { _jobs_run_scripts_command to "$@"; }
 # code：打开 VS Code；用于补齐未注册 code 命令时的终端入口。
 code() { _jobs_run_scripts_command code "$@"; }
+# codemap：构建当前目录或传入多个目录的 CodeGraph 代码地图。
+codemap() { _jobs_run_scripts_command codemap "$@"; }
 # mp4 / mov / webm 等：统一复用 to.command，不复制真实业务脚本。
 mp4()  { _jobs_run_scripts_command to mp4 "$@"; }
 # 封装 mov 对应的独立处理逻辑。

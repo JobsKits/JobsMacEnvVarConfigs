@@ -52,11 +52,11 @@ update.command --unattended
 
 ## 二、交互规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-`update` 本身就是升级入口，所以普通更新项采用：
+普通更新项按防误触约定采用：
 
 ```text
-直接回车：执行升级 / 刷新
-输入任意字符后回车：跳过当前项
+直接回车：跳过当前项
+输入任意字符后回车：执行升级 / 刷新
 ```
 
 单个更新项失败不会阻断后续更新项，只会写入日志并继续后续流程。
@@ -113,8 +113,10 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
   - 对应更新：检测已安装后执行 `npm install -g @colbymchenry/codegraph@latest`，输出版本，并执行 `codegraph install --yes` 刷新 Agent 配置
 - [**Ruby**](https://www.ruby-lang.org/) / [**RubyGems**](https://rubygems.org/) / [**rbenv**](https://github.com/rbenv/rbenv)
   - 对应更新：刷新 `rbenv` 初始化配置，执行 `rbenv rehash`、`gem update --system`、`gem update`
-- `gem` 包：[**CocoaPods**](https://cocoapods.org/)
-  - 对应更新：检测已安装后，用户可写的 Gem 目录直接执行 `gem update cocoapods`；系统 Gem 目录在普通模式下使用 `sudo`，无人值守模式下使用 `sudo -n`，无授权时跳过；之后执行 `pod repo update`
+  - 原生扩展：更新前后检查当前 CocoaPods 所用 Ruby，仅对缺失的已安装扩展版本备份重建；健康版本直接跳过，详见 [原生扩展修复](#gem-native-extensions)。
+- [**CocoaPods**](https://cocoapods.org/) 工具与公共规格源
+  - 工具更新：按当前 PATH 中 `pod` 的实际路径判断是否由 Homebrew 管理，命中时沿用 Homebrew 自适应下载；本轮逐项 formula 阶段已成功升级则跳过重复升级。活跃命令不属于该 formula、但当前 RubyGems 已安装时，可写 Gem 目录直接执行 `gem update cocoapods`；其它目录沿用普通模式 `sudo` / 无人值守 `sudo -n` 策略。归属无法确认或工具未登记时只提示，不自动补装。
+  - 规格刷新：先复用工程相同的网络模块验证原链路及已有代理，再让同一子流程中的 CDN / GitHub Specs 实测与定向刷新继承选中环境；只按源的实际本地名称刷新，双源失败保留缓存并记录未完成。具体边界见 [CocoaPods 网络选路](#cocoapods-network)。
 - [**Python**](https://www.python.org/) / [**pip**](https://pip.pypa.io/) / [**uv**](https://docs.astral.sh/uv/)
   - 对应更新：先执行内嵌运行时预检，再按已安装工具执行 `pyenv update`、`pyenv rehash`、`pipx upgrade-all`；pip 使用内嵌预检选定的 Homebrew 解释器
 - [**Dart**](https://dart.dev/) `pub` 缓存
@@ -342,6 +344,79 @@ codegraph install --yes
 codegraph index --force
 ```
 
+### 5.2、<span id="cocoapods-network">CocoaPods 网络选路与受限网络排查</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+工具本体升级、公共 Specs 索引刷新和具体 Pod 源码下载是三个独立步骤。Homebrew 本体升级继续使用第 4.3 节的 IPv4 / IPv6 策略；以下选源只用于公共规格源刷新，不会把 CDN 地址当作 Gem 下载地址，也不会修改工程的 `Podfile`、`Podfile.lock` 或 `Pods/`。
+
+| 环节 | 实际执行 |
+| --- | --- |
+| 选已有网络链路 | 内嵌完整 `JobsCocoaPodsNetwork` 模块，用 CocoaPods 所用 Ruby 验证当前 Git 链路、显式代理及系统已启用代理 |
+| 环境交接 | 仅把选中代理和新增 Git 配置写入权限 `0600` 的临时 NUL 键值载荷；Shell 校验完整受控键名后按字面值导出，不执行载荷代码，不输出 URL / 凭据 |
+| 后续 Specs 请求 | 同一个子 Shell 内的 GET、Git 协议检查及 `pod repo add-cdn` / `pod repo update` 全部继承本次选中配置；返回后父 Shell 环境不变，私有载荷删除 |
+
+1、先按项目中相同的选路顺序处理：显式 `JOBS_POD_PROXY_URL` 优先验证，否则复用当前环境与 Git 配置；原链路失败时读取 macOS 已启用的 HTTPS / HTTP / SOCKS 手工代理并发测试。使用 `AMPopTip 4.12.0` 的真实 Git tag 校验链路，不下载源码。每轮默认限时 `6` 秒，系统配置读取另限时 `1` 秒；不运行 PAC、不扫描端口、不猜代理、不安装软件。选路失败或 Ruby 不可用时，告警并保留原环境，继续独立判断 Specs 是否可达。
+
+2、同时从 `https://cdn.cocoapods.org/` 和 GitHub Raw 获取同一个 `AFNetworking 4.0.1` podspec，验证完整 JSON、名称和版本。GitHub 候选额外执行 `git ls-remote` 检查 Specs 仓库协议，每个候选默认整体限时 `8` 秒，包含 HTTP 和 Git 子进程。
+
+3、只选通过探测的源；两者可用时，GitHub GET 必须比 CDN 快超过 `15%` 且已有对应的本地 Git Specs，才优先选 Git，避免相近测量导致选源反复变化或引发首次大仓库克隆。Git 尚未登记、但 CDN 测通时，自动模式改用 CDN。小文件探测成功不保证完整大仓库或具体 Pod 下载成功。
+
+4、读取 `pod repo list --no-ansi` 获取 CocoaPods 实际配置的源名称，兼容自定义别名和仓库目录；只定向刷新所选官方公共源，保留私有源、原 Git Specs 和缓存。CDN 尚未登记时新增独立的 `jobs-public-cdn`，同名已占用则追加 `-cdn` 避让；不覆盖已有名称。Git 源尚未登记时提示未完成，不在全局升级中冷克隆巨大 Specs 仓库。
+
+5、双源不可用、明确指定的源未通过探测、源清单不可读或刷新失败时，该项返回失败，由总流程告警后继续。保留缓存不表示刷新成功。真实的源登记 / 刷新命令各自默认整体限时 `120` 秒，超时终止本次进程树，不自动删除缓存或切换未验证的源。
+
+| 环境变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `JOBS_POD_NETWORK_ADAPT` | 开启 | `0` 关闭已有代理探测 / 继承，保留 Specs 实测 |
+| `JOBS_POD_PROXY_URL` | 未设置 | 可选已有 HTTP / HTTPS / SOCKS5 / SOCKS5H 代理，真实验证通过后仅用于本次子流程；不要将凭据写入仓库或共享日志 |
+| `JOBS_POD_NETWORK_PROBE_TIMEOUT` | `6` | Git 选路每轮秒数，范围 `1..30` |
+| `JOBS_SPECS_SOURCE` | `auto` | `auto` 实测选源；`cdn` / `git` 明确指定源，仍需该源通过探测 |
+| `JOBS_SPECS_PROBE_TIMEOUT` | `8` | 单个候选 HTTP + Git 整体秒数，范围 `1..30` |
+| `JOBS_SPECS_CONNECT_TIMEOUT` | `2` | curl 连接秒数，范围 `1..30`，不超过候选整体时限 |
+| `JOBS_SPECS_UPDATE_TIMEOUT` | `120` | 单次源登记 / 刷新整体秒数，范围 `1..900` |
+
+选源和失败摘要统一写入 `$TMPDIR/update.log`；临时响应、底层工具错误、超时标记和私有网络载荷随子流程结束清理，避免将可能包含凭据的原始诊断落入公共日志。代理只覆盖本次子流程；Git 临时配置追加到原 `GIT_CONFIG_COUNT`，限定 GitHub URL 范围，保留原私有域配置和 `NO_PROXY`。curl / CocoaPods 使用进程环境代理，不写全局 Git、系统代理或 shell profile，不关闭 TLS 校验；`curl -q` 不读取个人 `.curlrc`。模块完整内嵌在 `update.command` 的标记块中，不依赖外置支持目录。
+
+受限网络出现 `Error installing AMPopTip`，并在 `git clone https://github.com/andreamazz/AMPopTip.git ... --branch 4.12.0` 报 `Couldn't connect to server` / `Operation timed out` 时，失败点是源码仓库连接。源码 URL 来自 [CocoaPods podspec 的 source 字段](https://guides.cocoapods.org/syntax/podspec.html#source)，切换公共索引源不能把它变成 CDN 下载。应在失败的那台电脑确认终端 Git 能通过当前网络或已有代理连接 GitHub；浏览器可访问并不能证明该 Git 进程的链路可用。可先做只读验证：
+
+```zsh
+GIT_TERMINAL_PROMPT=0 git \
+  -c http.lowSpeedLimit=1 \
+  -c http.lowSpeedTime=15 \
+  ls-remote \
+  https://github.com/andreamazz/AMPopTip.git \
+  refs/tags/4.12.0
+```
+
+返回引用只验证 Git 握手与 tag 查询，不能保证整个源码包传输成功。该命令继续超时时，应先打通终端 Git 的网络 / 代理再运行 `pod install`；不靠删除锁文件、修改第三方 podspec 或升级 CocoaPods 掩盖连接失败。CDN 探测的 `curl 35` 表示 TLS 握手阶段失败，日志本身不足以判断是证书、代理还是网络设备导致。
+
+隔离回归通过假 `curl` / `git` / `pod` / `brew` / `gem` 验证选源、定向刷新与超时，不运行真实安装或升级。从脚本目录执行：
+
+```zsh
+/bin/zsh Tests/cocoapods_network_tests.zsh
+ruby Tests/cocoapods_proxy_tests.rb
+```
+
+网络与升级回归覆盖 46 项，包括响应真实性、15% 阈值、并发、HTTP / Git 协议及刷新墙钟超时、后代进程回收、私有源保留、自定义别名、同名避让、混装归属和升级失败传播；其中代理层被替换为空操作，保证不访问宿主运行时。独立代理回归使用真实内嵌 Ruby 模块、假 Git / curl / pod 与系统配置夹具，检查选中代理实际到达后续命令、原 Git 配置 / NO_PROXY 保留、父环境恢复、私有载荷权限和清理、非法载荷拒绝及日志不泄露凭据。均不执行真实联网、安装或升级；结果不替代受限网络电脑上的实际安装验收。
+
+### 5.3、<span id="gem-native-extensions">Ruby 原生扩展的平台迁移修复</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+`Ignoring ... because its extensions are not built` 表示当前 Ruby 找不到该已安装版本的平台扩展。本机旧扩展保存在 `arm64-darwin-25/4.0.0`，当前 Ruby 需要 `arm64-darwin-27/4.0.0`。修复会使用当前 Ruby 重新编译，再用新进程精确激活原版本并实际加载原生二进制；平台名称取自当前运行时，不写死 `27`，不通过改名目录或复制完成标记绕过构建。
+
+`update -t` 的 Ruby / RubyGems 项在原有 Gem 更新前后执行检查；CocoaPods 项在工具升级后、Specs 刷新前也会复检，单独选择该项仍可修复。优先从活跃 `pod` 的脚本及 Homebrew 包装层定位 Ruby；无法解析时使用 PATH 中的 Ruby，再检查标准 Homebrew Ruby 路径。仅处理其 Gem 搜索路径中缺失扩展的非默认 Gem，Gem 升级命令仍保持原来的 PATH 选择。
+
+每个待修目标先将完整 Gem 目录、当前平台已有扩展及原始 gemspec 备份到 `~/.JobsMacEnv/backups/gem-native-extensions/`，再通过 RubyGems 构建接口使用本机已有 `extconf.rb` 源码重编译。构建或加载验证失败时恢复该目标并保留失败材料；其它已成功目标保留。没有缺失项时不编译、不写备份。缺少编译工具链、源码或目录写权限时明确报失败，由更新总流程记录后继续其它更新项；CocoaPods 项复检失败时跳过本次 Specs 刷新。
+
+这段修复本身不下载依赖、不安装新 Gem、不调用 sudo、不升级 Ruby，也不修改旧平台目录；原有 `gem update` / Homebrew 更新仍按原流程执行。修复结果同步写入 `$TMPDIR/update.log`。独立检查与修复入口见 [repair_gem_extensions.command](../repair_gem_extensions.command/README.md)，其实现原样内嵌，`update.command` 可以单文件复制运行。
+
+2026-10-17 本机实测：Ruby `4.0.7` 下 25 个版本重建成功，`pod --version` 的 `Ignoring` 从 75 条降为 0 条，正常输出 `1.17.0`；144 个旧平台文件与 gemspec 指纹保持一致，第二次执行缺失数为 0。未执行整套 `update -t` 来验收此功能，避免触发无关系统升级。
+
+从本脚本目录执行隔离回归：
+
+```zsh
+JOBS_GEM_REPAIR_SCRIPT="$PWD/update.command" /usr/bin/ruby ../repair_gem_extensions.command/Tests/native_extensions_test.rb
+/bin/zsh ../repair_gem_extensions.command/Tests/update_integration_test.zsh
+```
+
 ## 六、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 以下步骤可能耗时较长或触发系统级行为：
@@ -397,8 +472,8 @@ flowchart TD
     B --> C[等待回车继续]
     C --> D[按 install.command 对应项逐项询问]
     D --> E{当前项是否执行}
-    E -->|直接回车| F[执行升级 / 刷新]
-    E -->|输入任意字符后回车| G[跳过当前项]
+    E -->|输入任意字符后回车| F[执行升级 / 刷新]
+    E -->|直接回车| G[跳过当前项]
     F --> H{是否失败}
     H -->|失败| I[记录警告并继续]
     H -->|成功| J[记录成功]
