@@ -2,14 +2,37 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#jobs-toc-heading-1)
+- [一、运行方式](#jobs-toc-heading-2)
+- [二、交互规则](#jobs-toc-heading-3)
+- [三、与 install.command 的对应关系](#jobs-toc-heading-4)
+- [四、Homebrew 第三方配置](#jobs-toc-heading-5)
+  - [4.1、brew cask](#jobs-toc-heading-6)
+  - [4.2、brew formula](#jobs-toc-heading-7)
+  - [4.3、Homebrew 全局自适应下载](#jobs-toc-heading-8)
+- [五、更新顺序总览](#jobs-toc-heading-9)
+  - [5.1、CodeGraph 升级说明](#jobs-toc-heading-10)
+  - [5.2、CocoaPods 网络选路与受限网络排查](#cocoapods-network)
+  - [5.3、Ruby 原生扩展的平台迁移修复](#gem-native-extensions)
+- [六、风险说明](#jobs-toc-heading-13)
+- [七、日志文件](#jobs-toc-heading-14)
+- [八、结构约定](#jobs-toc-heading-15)
+- [九、流程图](#jobs-toc-heading-16)
+
+</details>
+<!-- jobs-toc:end -->
 
 ---
 
 > **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；脚本可单文件复制运行，不需要旁边的支持目录。终端自述确认后执行 `brew update` 更新本体及公式索引；只在指定公式 `python@3.13` 缺失、损坏或版本不满足 `3.11+` 时安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
 > 只有选中 Python 更新项后才执行内嵌预检；无人值守模式对内嵌环境层保持只读，缺失时停止该项，不借用系统 Python 绕过检查。原有其它升级项仍按自身选项运行。
 
-## 🔥 <font id=前言>前言</font>
+## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
 - 脚本入口使用 macOS 原生 Shell；其中的解析、转换或服务功能需要下述已验证的 Python 运行时。
 
@@ -23,7 +46,7 @@ install.command 安装 / 初始化过的内容，update.command 必须体现，�
 
 该脚本适合 `.command` 双击运行，也可以在终端中执行。启动后会先显示脚本内置自述，再按照更新顺序逐项询问。
 
-## 一、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 进入 `update.command` 所在目录后执行：
 
@@ -50,7 +73,7 @@ update.command --unattended
 
 需要管理员权限的命令在无人值守模式下统一使用 `sudo -n`：如果当前已有可用的 sudo 缓存或精确的 `NOPASSWD` 授权，命令可以执行；否则立即失败并跳过该提权项，继续后续更新，绝不会卡在密码提示。脚本不会自动修改 `sudoers`。
 
-## 二、交互规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、交互规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 普通更新项按防误触约定采用：
 
@@ -79,7 +102,7 @@ update.command --unattended
 JOBS_MAC_ENV_SKIP_README=1 ./update.command
 ```
 
-## 三、与 `install.command` 的对应关系 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、与 `install.command` 的对应关系 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 当前 `update.command` 已对齐 `install.command` 的这些安装 / 初始化项，并且按 `update.command` 实际询问顺序排列：
 
@@ -131,11 +154,11 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
   - [**Android Studio**](https://developer.android.com/studio?hl=zh-cn)
   - [**Python Downloads**](https://www.python.org/downloads/)
 
-## 四、Homebrew 第三方配置 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、Homebrew 第三方配置 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 `update.command` 内部保留与 `install.command` 同源的数组。
 
-### 4.1、`brew cask` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-6" data-jobs-toc="v2">4.1、`brew cask` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 当前 `BREW_CASKS`：
 
@@ -175,7 +198,7 @@ readonly -a BREW_CASKS=(
 | [**qlcolorcode**](https://github.com/sbarex/QLColorCode) | Quick Look 代码预览 |
 | `temurin@17` | Eclipse Temurin JDK 17 |
 
-### 4.2、`brew formula` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-7" data-jobs-toc="v2">4.2、`brew formula` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 当前 `BREW_FORMULAE`：
 
@@ -286,7 +309,7 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 - [**openjdk**](https://openjdk.org/) / [**openjdk@17**](https://openjdk.org/projects/jdk/17/)：升级后输出 Java 配置提示
 - [**fzf**](https://github.com/junegunn/fzf)：升级后刷新 `fzf` shell 配置
 
-### 4.3、Homebrew 全局自适应下载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-8" data-jobs-toc="v2">4.3、Homebrew 全局自适应下载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 `update.command` 对所有由 Homebrew `curl` 执行的更新下载使用同一组无人值守策略，不再只针对某个 cask 或 formula。
 
@@ -304,7 +327,7 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 
 边界：这个全局策略覆盖脚本内所有可由 Homebrew `curl` 控制的下载。`softwareupdate`、Git tap / `git pull`、`npm`、`gem`、`pod`、`dart` 和 `flutter` 拥有各自的下载器，Homebrew 的 `HOMEBREW_CURLRC` 不会伪装成对它们生效。
 
-## 五、更新顺序总览 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-9" data-jobs-toc="v2">五、更新顺序总览 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 `update.command` 当前按以下顺序逐项询问：
 
@@ -328,7 +351,7 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 18. [**JobsKits**](https://github.com/JobsKits) 仓库
 19. 手动下载 / 更新页面
 
-### 5.1、CodeGraph 升级说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-10" data-jobs-toc="v2">5.1、CodeGraph 升级说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 通过 `npm` 安装时，升级方式采用覆盖安装到最新版本：
 
@@ -417,7 +440,7 @@ JOBS_GEM_REPAIR_SCRIPT="$PWD/update.command" /usr/bin/ruby ../repair_gem_extensi
 /bin/zsh ../repair_gem_extensions.command/Tests/update_integration_test.zsh
 ```
 
-## 六、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-13" data-jobs-toc="v2">六、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 以下步骤可能耗时较长或触发系统级行为：
 
@@ -441,7 +464,7 @@ dart pub cache repair
 
 Homebrew 换线会重新执行当前幂等的 `brew update` / `brew upgrade` 命令。Homebrew 负责管理下载缓存和已完成项；脚本不手工删除缓存，也不回滚已完成的包。
 
-## 七、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-14" data-jobs-toc="v2">七、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 运行日志固定写入：
 
@@ -449,7 +472,7 @@ Homebrew 换线会重新执行当前幂等的 `brew update` / `brew upgrade` 命
 $TMPDIR/update.log
 ```
 
-## 八、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-15" data-jobs-toc="v2">八、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 运行时说明和核心流程已经写在 `update.command` 内部，不依赖同级 `README.md`。
 
@@ -464,7 +487,7 @@ update "$@"
 
 如果脚本被其他脚本 `source`，可以通过 `JOBS_MAC_ENV_SOURCE_MODE=1` 避免自动执行主流程。
 
-## 九、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-16" data-jobs-toc="v2">九、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```mermaid
 flowchart TD

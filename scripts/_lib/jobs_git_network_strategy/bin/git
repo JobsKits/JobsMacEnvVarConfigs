@@ -1,0 +1,488 @@
+#!/bin/zsh
+# 脚本自述：
+# - 脚本名称：Jobs Git 网络策略入口。
+# - 核心用途：push 先沿用 Git 原配置；仅初始连接失败时探测当前系统代理并重试一次。
+# - 影响范围：代理只传给重试子进程；不写 Git / 系统代理配置，不新增提交或强推。
+# - 运行提示：主动调用 git push 已表示执行意图；不等待输入，非 push 完整直通。
+# shell: zsh
+
+typeset -ga ORIGINAL_ARGS GLOBAL_ARGS PUSH_ARGS PROXY_URLS PROXY_HOSTS PROXY_PORTS
+typeset -g AUDIT_FILE='' DIAGNOSTIC_DIR='' TARGET_URL='' TARGET_ROOT=''
+typeset -g TARGET_HOST='-' TARGET_PORT='-' TARGET_REMOTE=''
+typeset -g CAPTURED_STATUS=0
+
+# 始终使用系统 Git，避免入口经 PATH 再次调用自己。
+real_git() {
+    /usr/bin/git "$@"
+}
+# 非 push 命令替换当前进程，保持 Git 输出和退出语义。
+exec_real_git() {
+    exec /usr/bin/git "$@"
+    exit $?
+}
+# 识别 Git 全局参数；无法确定的形式直接交回原生 Git。
+parse_push_invocation() {
+    ORIGINAL_ARGS=( "$@" )
+    GLOBAL_ARGS=()
+    PUSH_ARGS=()
+    local -a remaining=( "$@" )
+    local option=''
+    while (( ${#remaining} )); do
+        option="${remaining[1]}"
+        case "$option" in
+            -c|-C|--git-dir|--work-tree|--namespace|--config-env|--super-prefix)
+                (( ${#remaining} >= 2 )) || return 1
+                GLOBAL_ARGS+=( "${remaining[1]}" "${remaining[2]}" )
+                shift 2 remaining
+                ;;
+            -c?*|-C?*|--git-dir=*|--work-tree=*|--namespace=*|--config-env=*|--super-prefix=*|--exec-path=*)
+                GLOBAL_ARGS+=( "$option" )
+                shift remaining
+                ;;
+            -p|-P|--paginate|--no-pager|--bare|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--no-lazy-fetch|--no-advice)
+                GLOBAL_ARGS+=( "$option" )
+                shift remaining
+                ;;
+            -*)
+                return 1
+                ;;
+            push)
+                shift remaining
+                PUSH_ARGS=( "${remaining[@]}" )
+                return 0
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    done
+    return 1
+}
+# 先识别透明转发入口，再为明确的 push 输出简明内置自述。
+show_script_intro_and_route() {
+    if ! parse_push_invocation "$@"; then
+        exec_real_git "$@"
+    fi
+    print -u2 -r -- '[Jobs Git] 正常推送优先；仅初始连接失败时尝试当前系统代理一次。'
+    print -u2 -r -- "[Jobs Git] 代理仅影响本次重试，流量经过选定代理；进程退出即撤回，Ctrl+C 取消。审计：${HOME}/Library/Logs/JobsGitNetworkStrategy/push.log"
+}
+# 建立最小权限审计位置；无法写日志时仍保留原生 Git 可用性。
+prepare_audit() {
+    local audit_directory="${HOME}/Library/Logs/JobsGitNetworkStrategy"
+    AUDIT_FILE=''
+    if [[ -L "$audit_directory" || -L "${audit_directory}/push.log" ]]; then
+        print -u2 -r -- '[Jobs Git] 审计路径为符号链接，本次跳过审计。'
+        return 0
+    fi
+    if ! /bin/mkdir -p "$audit_directory" 2>/dev/null; then
+        print -u2 -r -- '[Jobs Git] 无法创建审计目录，本次跳过审计。'
+        return 0
+    fi
+    if ! /bin/chmod 700 "$audit_directory" 2>/dev/null; then
+        return 0
+    fi
+    if ! { : >> "${audit_directory}/push.log"; } 2>/dev/null; then
+        return 0
+    fi
+    /bin/chmod 600 "${audit_directory}/push.log" 2>/dev/null || return 0
+    AUDIT_FILE="${audit_directory}/push.log"
+}
+# 日志只记录模式、经过校验的主机/端口和退出码，不记录命令或原始诊断。
+audit_result() {
+    [[ -n "$AUDIT_FILE" ]] || return 0
+    local mode="$1" host="$2" port="$3" result="$4"
+    [[ "$mode" =~ '^[a-z-]+$' ]] || return 0
+    is_safe_proxy_host "$host" || host='-'
+    [[ "$port" =~ '^([0-9]+|-)$' ]] || port='-'
+    [[ "$result" =~ '^[0-9]+$' ]] || result=1
+    printf '%s mode=%s host=%s port=%s exit=%s\n' \
+        "$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')" "$mode" "$host" "$port" "$result" >> "$AUDIT_FILE" 2>/dev/null
+    return 0
+}
+# 删除仅用于失败分类的临时输出；从不把诊断复制进永久日志。
+cleanup_diagnostics() {
+    [[ -n "$DIAGNOSTIC_DIR" && -d "$DIAGNOSTIC_DIR" ]] || return 0
+    /bin/rm -f "${DIAGNOSTIC_DIR}/stderr" "${DIAGNOSTIC_DIR}/stdout" \
+        "${DIAGNOSTIC_DIR}/stderr.pipe" "${DIAGNOSTIC_DIR}/stdout.pipe"
+    /bin/rmdir "$DIAGNOSTIC_DIR" 2>/dev/null
+    DIAGNOSTIC_DIR=''
+}
+# 用 zsh 退出钩子清理，避免函数内 trap EXIT 在函数返回时提前触发。
+TRAPEXIT() {
+    cleanup_diagnostics
+}
+# 中断时终止策略，退出钩子负责清理临时文件。
+TRAPINT() {
+    exit 130
+}
+# 终止信号不再进入代理重试。
+TRAPTERM() {
+    exit 143
+}
+# 创建私有诊断夹具并注册退出清理，不修改 Git 子进程的 umask 或环境。
+prepare_diagnostics() {
+    DIAGNOSTIC_DIR="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/jobs-git-network.XXXXXXXX")" || return 1
+    : > "${DIAGNOSTIC_DIR}/stderr"
+    : > "${DIAGNOSTIC_DIR}/stdout"
+    /bin/chmod 600 "${DIAGNOSTIC_DIR}/stderr" "${DIAGNOSTIC_DIR}/stdout" || return 1
+    /usr/bin/mkfifo "${DIAGNOSTIC_DIR}/stderr.pipe" "${DIAGNOSTIC_DIR}/stdout.pipe" || return 1
+    /bin/chmod 600 "${DIAGNOSTIC_DIR}/stderr.pipe" "${DIAGNOSTIC_DIR}/stdout.pipe" || return 1
+    return 0
+}
+# 实时保持 stdout/stderr 两条流，并等写入完成后再进行保守分类。
+capture_native_push() {
+    /usr/bin/tee "${DIAGNOSTIC_DIR}/stdout" < "${DIAGNOSTIC_DIR}/stdout.pipe" &
+    local stdout_reader=$!
+    /usr/bin/tee "${DIAGNOSTIC_DIR}/stderr" < "${DIAGNOSTIC_DIR}/stderr.pipe" >&2 &
+    local stderr_reader=$!
+    real_git "${ORIGINAL_ARGS[@]}" > "${DIAGNOSTIC_DIR}/stdout.pipe" 2> "${DIAGNOSTIC_DIR}/stderr.pipe"
+    CAPTURED_STATUS=$?
+    wait "$stdout_reader" "$stderr_reader"
+    return "$CAPTURED_STATUS"
+}
+# 仅允许未开始对象传输的 HTTP 初始连接 / DNS 失败；其它结果均不自动重放。
+is_safe_initial_connection_failure() {
+    local stderr_file="${DIAGNOSTIC_DIR}/stderr"
+    [[ ! -s "${DIAGNOSTIC_DIR}/stdout" ]] || return 1
+    /usr/bin/grep -Eiq 'Enumerating objects:|Counting objects:|Compressing objects:|Writing objects:|Total [0-9]+|remote:|^To |Everything up.to.date|\[new branch\]|\[up.to.date\]|\[deleted\]|\[rejected\]|\[remote rejected\]|RPC failed|curl (18|22|35|51|55|56|60)|recv failure|send failure|SSL|certificate|authentication|Permission denied|access denied|not found|non.fast.forward|Updates were rejected|remote end hung up|unexpected disconnect|pack.objects|POST git.receive.pack' "$stderr_file" && return 1
+    /usr/bin/grep -Eiq "^fatal: unable to access .*([Ff]ailed to connect|[Cc]ould not resolve host|[Cc]ould not resolve proxy|[Cc]ouldn't connect to server)" "$stderr_file"
+}
+# 解析 push 的目标参数；不明确的 push 选项保守禁止自动重试。
+push_repository_argument() {
+    local -a remaining=( "${PUSH_ARGS[@]}" )
+    local repository='' argument=''
+    while (( ${#remaining} )); do
+        argument="${remaining[1]}"
+        case "$argument" in
+            --repo)
+                (( ${#remaining} >= 2 )) || return 1
+                [[ -z "$repository" ]] || return 1
+                repository="${remaining[2]}"
+                shift 2 remaining
+                ;;
+            --repo=*)
+                [[ -z "$repository" ]] || return 1
+                repository="${argument#--repo=}"
+                shift remaining
+                ;;
+            --receive-pack|--exec|--push-option|-o)
+                (( ${#remaining} >= 2 )) || return 1
+                shift 2 remaining
+                ;;
+            --receive-pack=*|--exec=*|--push-option=*|-o?*|--force-with-lease=*|--signed=*|--recurse-submodules=*)
+                shift remaining
+                ;;
+            -u|--set-upstream|-v|--verbose|-q|--quiet|--all|--branches|--prune|--mirror|-d|--delete|--tags|-n|--dry-run|--porcelain|-f|--force|--force-with-lease|--force-if-includes|--no-force-if-includes|--no-verify|--verify|--atomic|--no-atomic|--follow-tags|--no-follow-tags|--signed|--no-signed|--thin|--no-thin|--progress|--no-progress|-4|--ipv4|-6|--ipv6)
+                shift remaining
+                ;;
+            --)
+                shift remaining
+                if (( ${#remaining} )); then
+                    [[ -z "$repository" ]] || return 1
+                    repository="${remaining[1]}"
+                fi
+                break
+                ;;
+            -*)
+                return 1
+                ;;
+            *)
+                if [[ -z "$repository" ]]; then
+                    repository="$argument"
+                fi
+                break
+                ;;
+        esac
+    done
+    print -r -- "$repository"
+}
+# 按 Git 的默认 push remote 优先级选择一个目标，不改变仓库配置。
+default_push_remote() {
+    local branch='' selected='' remotes=''
+    branch="$(real_git "${GLOBAL_ARGS[@]}" symbolic-ref --quiet --short HEAD 2>/dev/null)"
+    if [[ -n "$branch" ]]; then
+        selected="$(real_git "${GLOBAL_ARGS[@]}" config --get "branch.${branch}.pushRemote" 2>/dev/null)"
+        if [[ -n "$selected" ]]; then
+            print -r -- "$selected"
+            return 0
+        fi
+    fi
+    selected="$(real_git "${GLOBAL_ARGS[@]}" config --get remote.pushDefault 2>/dev/null)"
+    if [[ -n "$selected" ]]; then
+        print -r -- "$selected"
+        return 0
+    fi
+    if [[ -n "$branch" ]]; then
+        selected="$(real_git "${GLOBAL_ARGS[@]}" config --get "branch.${branch}.remote" 2>/dev/null)"
+        if [[ -n "$selected" ]]; then
+            print -r -- "$selected"
+            return 0
+        fi
+    fi
+    remotes="$(real_git "${GLOBAL_ARGS[@]}" remote 2>/dev/null)"
+    local -a names=( "${(@f)remotes}" )
+    if (( ${#names} == 1 )) && [[ -n "${names[1]}" ]]; then
+        print -r -- "${names[1]}"
+        return 0
+    fi
+    if (( ${names[(Ie)origin]} )); then
+        print -r -- origin
+        return 0
+    fi
+    return 1
+}
+# 拆出不含凭据、路径和查询参数的 HTTP 站点，只用于只读连通性探测。
+parse_http_target() {
+    local url="$1" scheme='' authority='' host='' port=''
+    [[ "$url" != *$'\n'* && "$url" != *$'\r'* ]] || return 1
+    if [[ "$url" == https://* ]]; then
+        scheme=https
+        port=443
+    elif [[ "$url" == http://* ]]; then
+        scheme=http
+        port=80
+    else
+        return 1
+    fi
+    authority="${url#*://}"
+    authority="${authority%%[/?#]*}"
+    authority="${authority##*@}"
+    if [[ "$authority" =~ '^\[([0-9A-Fa-f:]+)\](:([0-9]+))?$' ]]; then
+        host="[${match[1]}]"
+        [[ -n "${match[3]}" ]] && port="${match[3]}"
+    elif [[ "$authority" =~ '^([A-Za-z0-9_.-]+)(:([0-9]+))?$' ]]; then
+        host="${match[1]}"
+        [[ -n "${match[3]}" ]] && port="${match[3]}"
+    else
+        return 1
+    fi
+    (( ${#port} <= 5 )) || return 1
+    (( 10#$port >= 1 && 10#$port <= 65535 )) || return 1
+    TARGET_URL="$url"
+    TARGET_HOST="$host"
+    TARGET_PORT="$port"
+    TARGET_ROOT="${scheme}://${authority}/"
+    return 0
+}
+# 展开真实 push URL；多个 push URL 或 SSH / 本地目标不进行代理重放。
+resolve_single_http_push_target() {
+    local repository='' urls='' synthetic_remote="jobs_network_target_${$}"
+    repository="$(push_repository_argument)" || return 1
+    [[ -n "$repository" ]] || repository="$(default_push_remote)" || return 1
+    TARGET_REMOTE=''
+    if [[ "$repository" =~ '^[A-Za-z0-9_][A-Za-z0-9._/-]*$' ]]; then
+        urls="$(real_git "${GLOBAL_ARGS[@]}" remote get-url --push --all "$repository" 2>/dev/null)"
+        if [[ $? == 0 && -n "$urls" ]]; then
+            TARGET_REMOTE="$repository"
+        else
+            urls=''
+        fi
+    fi
+    if [[ -z "$urls" ]]; then
+        # 临时 remote 仅存在于这条只读命令，复用 Git 自己的 insteadOf/pushInsteadOf 展开。
+        urls="$(real_git "${GLOBAL_ARGS[@]}" -c "remote.${synthetic_remote}.url=${repository}" remote get-url --push --all "$synthetic_remote" 2>/dev/null)" || return 1
+    fi
+    local -a expanded_urls=( "${(@f)urls}" )
+    (( ${#expanded_urls} == 1 )) || return 1
+    parse_http_target "${expanded_urls[1]}"
+}
+# 用户已有显式代理或显式空代理时保留其选择，不替换配置作用域。
+has_explicit_proxy() {
+    local variable=''
+    for variable in http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY; do
+        (( ${+parameters[$variable]} )) && return 0
+    done
+    real_git "${GLOBAL_ARGS[@]}" config --get-urlmatch http.proxy "$TARGET_URL" >/dev/null 2>&1 && return 0
+    if [[ -n "$TARGET_REMOTE" ]]; then
+        real_git "${GLOBAL_ARGS[@]}" config --get "remote.${TARGET_REMOTE}.proxy" >/dev/null 2>&1 && return 0
+    fi
+    return 1
+}
+# 在失败发生后读取当前系统代理，避免固定某个本机端口。
+system_proxy_snapshot() {
+    /usr/sbin/scutil --proxy
+}
+# 只接受普通主机名或 IPv6 字面量，拒绝凭据、空白和 URL 片段。
+is_safe_proxy_host() {
+    [[ "$1" =~ '^([A-Za-z0-9_.-]+|[0-9A-Fa-f:]+|\[[0-9A-Fa-f:]+\])$' ]]
+}
+# 匹配主机/通配域名和 IPv4 CIDR；IPv6 CIDR 无法精确判断时保守保留旁路。
+proxy_rules_bypass_target() {
+    local rules="$1" exclude_simple="${2:-0}"
+    print -r -- "$rules" | /usr/bin/awk -v host="${TARGET_HOST:l}" -v simple="$exclude_simple" '
+        function ipv4(value, octets, count, i, result) {
+            count=split(value,octets,"."); if (count<1 || count>4) return -1
+            result=0
+            for (i=1;i<=4;i++) {
+                if (i<=count && (octets[i]!~/^[0-9]+$/ || octets[i]>255)) return -1
+                result=result*256+(i<=count ? octets[i] : 0)
+            }
+            return result
+        }
+        function matches(rule, pair, prefix, divisor, left, right, regex, i, character) {
+            if (rule=="<local>") return host !~ /[.:]/
+            if (index(rule,"/")) {
+                split(rule,pair,"/")
+                if (index(pair[1],":") && index(host,":")) return 1
+                if (host !~ /^[0-9.]+$/ || pair[2]!~/^[0-9]+$/ || pair[2]>32) return 0
+                left=ipv4(host); right=ipv4(pair[1]); divisor=2^(32-pair[2])
+                return left>=0 && right>=0 && int(left/divisor)==int(right/divisor)
+            }
+            if (rule==host) return 1
+            if (substr(rule,1,1)==".") rule=substr(rule,2)
+            if (host==rule || (length(host)>length(rule) && substr(host,length(host)-length(rule))=="." rule)) return 1
+            regex="^"
+            for (i=1;i<=length(rule);i++) {
+                character=substr(rule,i,1)
+                if (character=="*") regex=regex ".*"
+                else if (character=="?") regex=regex "."
+                else if (character ~ /[A-Za-z0-9_-]/) regex=regex character
+                else regex=regex "\\" character
+            }
+            return host ~ (regex "$")
+        }
+        BEGIN {
+            sub(/^\[/,"",host); sub(/\]$/,"",host)
+            if (simple=="1" && host !~ /[.:]/) matched=1
+        }
+        { rule=tolower($0); gsub(/^[[:space:]]+|[[:space:]]+$/,"",rule); if (length(rule) && matches(rule)) matched=1 }
+        END { exit matched ? 0 : 1 }
+    '
+}
+# 保留系统代理例外与现有 NO_PROXY；不把被排除的主机导向回退代理。
+target_bypasses_proxy() {
+    local snapshot="$1" rules='' exclude_simple=0
+    rules="$(print -r -- "$snapshot" | /usr/bin/awk '
+        /ExceptionsList[[:space:]]*:[[:space:]]*<array>/ { in_exceptions=1; next }
+        in_exceptions && /^[[:space:]]*}/ { in_exceptions=0 }
+        in_exceptions && /^[[:space:]]*[0-9]+[[:space:]]*:/ { sub(/^[^:]*:[[:space:]]*/, ""); print }
+    ')"
+    print -r -- "$snapshot" | /usr/bin/grep -Eq '^[[:space:]]*ExcludeSimpleHostnames[[:space:]]*:[[:space:]]*1[[:space:]]*$' && exclude_simple=1
+    proxy_rules_bypass_target "$rules" "$exclude_simple" && return 0
+    local variable=''
+    for variable in no_proxy NO_PROXY; do
+        rules="${(P)variable}"
+        rules="${rules//,/$'\n'}"
+        proxy_rules_bypass_target "$rules" 0 && return 0
+    done
+    return 1
+}
+# 优先 HTTPS、其次 HTTP、最后 SOCKS；仅接受已启用、合法且不含凭据的地址。
+discover_system_proxies() {
+    PROXY_URLS=()
+    PROXY_HOSTS=()
+    PROXY_PORTS=()
+    local snapshot='' rows='' kind='' host='' port='' proxy='' scheme=''
+    snapshot="$(system_proxy_snapshot 2>/dev/null)" || return 1
+    target_bypasses_proxy "$snapshot" && return 2
+    rows="$(print -r -- "$snapshot" | /usr/bin/awk '
+        /^[[:space:]]*(HTTPSEnable|HTTPSProxy|HTTPSPort|HTTPEnable|HTTPProxy|HTTPPort|SOCKSEnable|SOCKSProxy|SOCKSPort)[[:space:]]*:/ {
+            key=$1; value=$0; sub(/^[^:]*:[[:space:]]*/, "", value); sub(/[[:space:]]*$/, "", value); values[key]=value
+        }
+        END {
+            split("HTTPS HTTP SOCKS", kinds, " ")
+            for (i=1;i<=3;i++) {
+                kind=kinds[i]
+                if (values[kind "Enable"]=="1") printf "%s\t%s\t%s\n", kind, values[kind "Proxy"], values[kind "Port"]
+            }
+        }')"
+    while IFS=$'\t' read -r kind host port; do
+        [[ -n "$kind" && "$port" =~ '^[0-9]+$' ]] || continue
+        is_safe_proxy_host "$host" || continue
+        (( ${#port} <= 5 )) || continue
+        (( 10#$port >= 1 && 10#$port <= 65535 )) || continue
+        [[ "$host" == *:* && "$host" != \[*\] ]] && host="[${host}]"
+        scheme=http
+        [[ "$kind" == SOCKS ]] && scheme=socks5h
+        proxy="${scheme}://${host}:${port}"
+        (( ${PROXY_URLS[(Ie)$proxy]} )) && continue
+        PROXY_URLS+=( "$proxy" )
+        PROXY_HOSTS+=( "$host" )
+        PROXY_PORTS+=( "$port" )
+    done <<< "$rows"
+    (( ${#PROXY_URLS} > 0 ))
+}
+# curl 仅发站点 HEAD；保留用户 NO_PROXY，状态码只证明可达，不代表 push 权限。
+curl_head_status() {
+    /usr/bin/curl --disable --silent --head --output /dev/null --write-out '%{http_code}' \
+        --connect-timeout 3 --max-time 6 --proto '=http,https' \
+        --proxy "$1" "$TARGET_ROOT" 2>/dev/null
+}
+# 只选择首个连通候选，实际 push 失败后不再轮询其它代理。
+retry_with_first_reachable_proxy() {
+    local index=0 http_status='' probe_result=0 retry_result=0
+    local -a retry_proxy_args
+    for (( index = 1; index <= ${#PROXY_URLS}; index++ )); do
+        http_status="$(curl_head_status "${PROXY_URLS[index]}")"
+        probe_result=$?
+        audit_result proxy-probe "${PROXY_HOSTS[index]}" "${PROXY_PORTS[index]}" "$probe_result"
+        if (( probe_result != 0 )) || [[ ! "$http_status" =~ '^[1-5][0-9][0-9]$' ]]; then
+            continue
+        fi
+        print -u2 -r -- "[Jobs Git] 站点经代理 ${PROXY_HOSTS[index]}:${PROXY_PORTS[index]} 可达，仅本次原参数重试一次。"
+        retry_proxy_args=( -c "http.proxy=${PROXY_URLS[index]}" )
+        if [[ -n "$TARGET_REMOTE" ]]; then
+            retry_proxy_args+=( -c "remote.${TARGET_REMOTE}.proxy=${PROXY_URLS[index]}" )
+        fi
+        real_git "${GLOBAL_ARGS[@]}" "${retry_proxy_args[@]}" push "${PUSH_ARGS[@]}"
+        retry_result=$?
+        audit_result proxy-retry "${PROXY_HOSTS[index]}" "${PROXY_PORTS[index]}" "$retry_result"
+        return "$retry_result"
+    done
+    print -u2 -r -- '[Jobs Git] 当前系统代理均未通过连通性探测，保留原推送失败结果。'
+    audit_result no-reachable-proxy "$TARGET_HOST" "$TARGET_PORT" "$CAPTURED_STATUS"
+    return "$CAPTURED_STATUS"
+}
+# 先执行原生 push，只有确定尚未传输的连接故障才进入单次回退。
+execute_push_policy() {
+    setopt NO_NOMATCH
+    prepare_audit
+    if ! prepare_diagnostics; then
+        cleanup_diagnostics
+        print -u2 -r -- '[Jobs Git] 无法建立私有诊断文件，本次仅执行原生推送。'
+        exec_real_git "${ORIGINAL_ARGS[@]}"
+    fi
+    capture_native_push
+    local native_result=$?
+    audit_result native - - "$native_result"
+    if (( native_result == 0 )); then
+        cleanup_diagnostics
+        return 0
+    fi
+    if ! is_safe_initial_connection_failure; then
+        audit_result skip-unsafe - - "$native_result"
+        cleanup_diagnostics
+        return "$native_result"
+    fi
+    cleanup_diagnostics
+    if ! resolve_single_http_push_target; then
+        print -u2 -r -- '[Jobs Git] 目标不是可确定的单个 HTTP(S) push URL，保留原失败结果。'
+        audit_result skip-target - - "$native_result"
+        return "$native_result"
+    fi
+    if has_explicit_proxy; then
+        print -u2 -r -- '[Jobs Git] 当前已有显式代理配置，保留原选择与失败结果。'
+        audit_result skip-explicit-proxy "$TARGET_HOST" "$TARGET_PORT" "$native_result"
+        return "$native_result"
+    fi
+    discover_system_proxies
+    local discovery_result=$?
+    if (( discovery_result != 0 )); then
+        if (( discovery_result == 2 )); then
+            print -u2 -r -- '[Jobs Git] 目标命中系统或 NO_PROXY 旁路规则，保留原失败结果。'
+            audit_result skip-bypass "$TARGET_HOST" "$TARGET_PORT" "$native_result"
+        else
+            print -u2 -r -- '[Jobs Git] 当前没有启用的系统 HTTPS / HTTP / SOCKS 代理，保留原失败结果。'
+            audit_result no-system-proxy "$TARGET_HOST" "$TARGET_PORT" "$native_result"
+        fi
+        return "$native_result"
+    fi
+    retry_with_first_reachable_proxy
+}
+# 编排透明入口说明与完整推送策略。
+main() {
+    show_script_intro_and_route "$@" # 非 push 完整直通；push 展示范围、运行策略与审计位置。
+    execute_push_policy "$@" # 正常推送优先，明确初始连接失败才进行一次进程内代理回退。
+}
+
+main "$@"

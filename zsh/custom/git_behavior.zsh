@@ -3,6 +3,19 @@
 
 [[ -o interactive ]] || return 0
 
+# JOBS_GIT_NETWORK_STRATEGY_BEGIN
+# 终端与 Sourcetree 共用可执行入口，只有 push 连接失败时才动态尝试代理。
+jobs_mount_git_network_strategy() {
+  local strategy_bin="${JOBS_MAC_ENV_HOME:-$HOME/.JobsMacEnv}/Scripts/_lib/jobs_git_network_strategy/bin"
+  if [[ -x "$strategy_bin/git" ]]; then
+    path=("$strategy_bin" "${(@)path:#$strategy_bin}")
+    export PATH
+  fi
+}
+jobs_mount_git_network_strategy
+unfunction jobs_mount_git_network_strategy
+# JOBS_GIT_NETWORK_STRATEGY_END
+
 jobs_locale_is_utf8() {
   local value="${1:-}"
   value="${value:l}"

@@ -758,6 +758,7 @@ verify_scripts_modules() {
     _lib/jobs_path_lib.zsh
     _lib/jobs_session_lib.zsh
     _lib/jobs_flutter_lib.zsh
+    _lib/jobs_git_network_strategy/bin/git
   )
 
   for file in "${required_libs[@]}"; do
@@ -769,6 +770,11 @@ verify_scripts_modules() {
   if (( ${#missing[@]} > 0 )); then
     error_echo "Scripts 私有库同步不完整：${missing[*]}"
     error_echo "当前目录：$scripts_dir"
+    exit 1
+  fi
+
+  if [[ ! -x "$scripts_dir/_lib/jobs_git_network_strategy/bin/git" ]]; then
+    error_echo "Git 网络策略入口不可执行：$scripts_dir/_lib/jobs_git_network_strategy/bin/git"
     exit 1
   fi
 

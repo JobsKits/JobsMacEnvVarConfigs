@@ -2,11 +2,24 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#jobs-toc-heading-1)
+- [一、运行方式与交互](#jobs-toc-heading-2)
+- [二、运行时与执行前检查](#jobs-toc-heading-3)
+- [三、备份、构建与失败恢复](#jobs-toc-heading-4)
+- [四、日志与常见问题](#jobs-toc-heading-5)
+- [五、隔离回归](#jobs-toc-heading-6)
+
+</details>
+<!-- jobs-toc:end -->
 
 ---
 
-## 🔥 <font id=前言>前言</font>
+## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
 使用当前 [**CocoaPods**](https://cocoapods.org/) 对应的 [**Ruby**](https://www.ruby-lang.org/) 重新构建缺失的 [**Gem**](https://rubygems.org/) 原生扩展，处理 `Ignoring ... because its extensions are not built`。默认只扫描，明确传入 `--repair` 才会修改已安装扩展；Ruby 和 Gem 版本保持原状。
 
@@ -35,7 +48,7 @@
 
 平台名称由运行时读取，不写死 `darwin-27`。旧平台目录继续保留，不通过目录改名或复制完成标记替代重编译。以上结果仅对应本机验证。
 
-## 一、运行方式与交互 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、运行方式与交互 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 参数 | 行为 |
 | --- | --- |
@@ -50,7 +63,7 @@
 
 日常入口 [update.command](../update.command/README.md#gem-native-extensions) 在 Ruby / RubyGems 更新项中内嵌同一实现。独立脚本可单文件复制运行，不依赖 README 或外置函数库。
 
-## 二、运行时与执行前检查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、运行时与执行前检查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 默认优先解析活跃 `pod` 的脚本及 [**Homebrew**](https://brew.sh/) 包装层，选择其 Ruby；无法解析时依次检查 PATH 中的 Ruby、现有标准 Homebrew Ruby 路径。不调用 Homebrew 安装或升级命令。
 
@@ -63,7 +76,7 @@
 
 只有发现待修项后，才检查 Ruby 头文件、`make` 和 [**Xcode**](https://developer.apple.com/xcode) / Command Line Tools 的 `clang`。每个目标还须具备本机 `extconf.rb` 源码、可写的 Gem 和扩展目录；符号链接目标或不支持的构建入口会明确报错。脚本不自动安装工具链、下载源码或提权补权限。
 
-## 三、备份、构建与失败恢复 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、备份、构建与失败恢复 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 阶段 | 实际行为 |
 | --- | --- |
@@ -79,7 +92,7 @@
 
 修复本身不进行网络安装、不新增 Gem、不调用 `sudo`、不升级 Ruby，不删除旧平台目录。没有本机源码、工具链或写权限时，应先处理日志列出的阻塞项，再重新运行；已成功目标下次自动跳过。
 
-## 四、日志与常见问题 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、日志与常见问题 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 终端结果同步写入系统临时目录的 `repair_gem_extensions.log`，即 `$TMPDIR/repair_gem_extensions.log`；`TMPDIR` 未设置时使用 `/tmp`。每次确认执行后重新初始化日志；备份和失败材料保留在各目标目录。
 
@@ -91,7 +104,7 @@
 | 加载验证失败 | 不能仅凭完成标记判定成功；脚本会恢复该目标并保留失败材料 |
 | 已修复扩展但 `pod install` 仍下载超时 | 扩展加载与源码下载属于不同问题；继续检查实际失败 URL 的网络链路 |
 
-## 五、隔离回归 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-6" data-jobs-toc="v2">五、隔离回归 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 从本目录执行：
 

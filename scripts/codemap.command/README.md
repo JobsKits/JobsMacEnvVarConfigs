@@ -2,11 +2,25 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#jobs-toc-heading-1)
+- [一、运行方式](#usage)
+- [二、执行前检查](#dependencies)
+- [三、构建行为与产物](#build-behavior)
+- [四、命令注册](#registration)
+- [五、日志与排查](#logs-and-errors)
+- [六、验证范围](#validation)
+
+</details>
+<!-- jobs-toc:end -->
 
 ---
 
-## 🔥 <font id=前言>前言</font>
+## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
 `codemap` 调用 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 为当前目录或指定目录构建 `.codegraph` 代码地图。支持手工输入路径、从 Finder 拖入路径，以及一次处理多个目录；每次先展示内置自述，按回车确认后才写入索引。
 

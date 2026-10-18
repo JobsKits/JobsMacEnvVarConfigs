@@ -2,7 +2,31 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#jobs-toc-heading-1)
+- [一、推荐策略](#jobs-toc-heading-2)
+- [二、通过 list 菜单运行](#jobs-toc-heading-3)
+- [三、通过终端短命令运行](#jobs-toc-heading-4)
+- [四、MOSS-TTS-Nano 引擎](#jobs-toc-heading-5)
+  - [4.1 默认路径](#jobs-toc-heading-6)
+  - [4.2 MOSS 交互命令](#jobs-toc-heading-7)
+  - [4.3 输出文件](#jobs-toc-heading-8)
+- [五、VoxCPM2 引擎](#jobs-toc-heading-9)
+  - [5.1 默认路径与参数](#jobs-toc-heading-10)
+  - [5.2 VoxCPM2 交互命令](#jobs-toc-heading-11)
+  - [5.3 VoxCPM2 输出文件](#jobs-toc-heading-12)
+  - [5.4 使用建议](#jobs-toc-heading-13)
+- [六、Supertonic 引擎](#jobs-toc-heading-14)
+  - [6.1 Supertonic 交互命令](#jobs-toc-heading-15)
+- [七、日志与排查](#jobs-toc-heading-16)
+- [八、维护原则](#jobs-toc-heading-17)
+
+</details>
+<!-- jobs-toc:end -->
 
 ---
 
@@ -11,7 +35,7 @@
 > **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；脚本可单文件复制运行，不需要旁边的支持目录。终端自述确认后执行 `brew update` 更新本体及公式索引；只在指定公式 `python@3.12` 缺失、损坏或版本不满足 `3.10–3.12`（排除 `3.13+`） 时安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
 > 三个语音引擎均使用兼容的 Homebrew Python 3.12；已有虚拟环境先检查版本与健康状态，旧环境需修复时完整改名备份后重建，再补齐对应引擎依赖。
 
-## <span id="前言">🔥 前言</span>
+## <span id="jobs-toc-heading-1" data-jobs-toc="v2"><span id="前言">🔥 前言</span></span><!-- jobs-toc:heading-end -->
 
 这个脚本现在是增强型本地 TTS 入口：
 
@@ -30,7 +54,7 @@ fzf 选择 TTS 引擎
 
 ---
 
-## 一、推荐策略 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、推荐策略 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 文本 / 场景 | 推荐引擎 | 原因 |
 | --- | --- | --- |
@@ -42,7 +66,7 @@ fzf 选择 TTS 引擎
 
 ---
 
-## 二、通过 `list` 菜单运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、通过 `list` 菜单运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 安装 / 同步 `🌍JobsMacEnvVarConfigs` 后执行：
 
@@ -66,7 +90,7 @@ Supertonic       优势：轻量稳定、启动快、英文/日韩；劣势：�
 
 ---
 
-## 三、通过终端短命令运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、通过终端短命令运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 直接进入交互模式：
 
@@ -103,9 +127,9 @@ TTS_ENGINE=supertonic tts "Hello."
 
 ---
 
-## 四、MOSS-TTS-Nano 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、MOSS-TTS-Nano 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-### 4.1 默认路径 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-6" data-jobs-toc="v2">4.1 默认路径 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```shell
 MOSS_TTS_NANO_HOME=~/Desktop/MOSS-TTS-Nano
@@ -126,7 +150,7 @@ pip install -e .
 
 直接按回车执行，输入任意字符后回车跳过。
 
-### 4.2 MOSS 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-7" data-jobs-toc="v2">4.2 MOSS 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 命令 | 作用 |
 | --- | --- |
@@ -138,7 +162,7 @@ pip install -e .
 | `:config` | 查看当前 MOSS 配置 |
 | `:quit` | 退出 |
 
-### 4.3 输出文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-8" data-jobs-toc="v2">4.3 输出文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 MOSS-TTS-Nano 官方 CLI 默认输出：
 
@@ -154,9 +178,9 @@ scripts/tts.command/outputs/moss_tts_nano_YYYYMMDD_HHMMSS.wav
 
 ---
 
-## 五、VoxCPM2 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-9" data-jobs-toc="v2">五、VoxCPM2 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-### 5.1 默认路径与参数 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-10" data-jobs-toc="v2">5.1 默认路径与参数 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```shell
 VOXCPM_VENV_DIR=~/Desktop/voxcpm-venv
@@ -185,7 +209,7 @@ python -c "from voxcpm import VoxCPM; print('VoxCPM is ready')"
 HF_ENDPOINT=https://hf-mirror.com
 ```
 
-### 5.2 VoxCPM2 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-11" data-jobs-toc="v2">5.2 VoxCPM2 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 命令 | 作用 |
 | --- | --- |
@@ -205,7 +229,7 @@ HF_ENDPOINT=https://hf-mirror.com
 | `:config` | 查看当前 VoxCPM 配置 |
 | `:quit` | 退出 |
 
-### 5.3 VoxCPM2 输出文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-12" data-jobs-toc="v2">5.3 VoxCPM2 输出文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 脚本输出到：
 
@@ -213,7 +237,7 @@ HF_ENDPOINT=https://hf-mirror.com
 scripts/tts.command/outputs/voxcpm_YYYYMMDD_HHMMSS.wav
 ```
 
-### 5.4 使用建议 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-13" data-jobs-toc="v2">5.4 使用建议 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 VoxCPM2 不适合作为所有场景的默认引擎。它的优势是高质量、多语言、声音设计和声音克隆；代价是模型大、首次下载慢、CPU 推理慢。
 
@@ -221,7 +245,7 @@ VoxCPM2 不适合作为所有场景的默认引擎。它的优势是高质量、
 
 ---
 
-## 六、Supertonic 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-14" data-jobs-toc="v2">六、Supertonic 引擎 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 Supertonic 保留原有逻辑。
 
@@ -247,7 +271,7 @@ supertonic serve --host 127.0.0.1 --port 7788
 POST http://127.0.0.1:7788/v1/tts
 ```
 
-### 6.1 Supertonic 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-15" data-jobs-toc="v2">6.1 Supertonic 交互命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 命令 | 作用 |
 | --- | --- |
@@ -269,7 +293,7 @@ POST http://127.0.0.1:7788/v1/tts
 
 ---
 
-## 七、日志与排查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-16" data-jobs-toc="v2">七、日志与排查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 主日志：
 
@@ -297,7 +321,7 @@ $TMPDIR/tts.server.log
 
 ---
 
-## 八、维护原则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-17" data-jobs-toc="v2">八、维护原则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 这个脚本不要把所有引擎揉成一个“自动乱猜”的黑盒。正确方向是：
 

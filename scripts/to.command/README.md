@@ -2,11 +2,31 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#jobs-toc-heading-1)
+- [一、适用场景](#jobs-toc-heading-2)
+- [二、运行方式](#jobs-toc-heading-3)
+  - [2.1、终端短命令](#jobs-toc-heading-4)
+  - [2.2、通用命令](#jobs-toc-heading-5)
+  - [2.3、通过 list 菜单执行](#jobs-toc-heading-6)
+  - [2.4、双击 .command](#jobs-toc-heading-7)
+- [三、执行前检查](#jobs-toc-heading-8)
+- [四、脚本执行命令](#jobs-toc-heading-9)
+- [五、流程图](#jobs-toc-heading-10)
+- [六、日志文件](#jobs-toc-heading-11)
+- [七、风险说明](#jobs-toc-heading-12)
+- [八、未执行声明](#jobs-toc-heading-13)
+
+</details>
+<!-- jobs-toc:end -->
 
 ---
 
-## 🔥 <font id=前言>前言</font>
+## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
 - 采用 Shell 脚本的原因：Shell 来自 [**macOS**](https://www.apple.com/macos/) 原生系统底层，虽然写法相对繁琐冗杂，但执行效率高，并且不需要额外介入 [**Ruby**](https://www.ruby-lang.org)、[**Python**](https://www.python.org) 等第三方运行环境，因此具备更好的移植性。
 
@@ -16,7 +36,7 @@
 
 当前入口内嵌完整的 [**Homebrew**](https://brew.sh/) 健康发现、必要安装及 `shellenv` 激活函数，可单独复制脚本运行，不依赖外置环境模块。健康环境直接复用；必须安装管理器时输入精确大写 `YES` 选择系统目录，其他输入选择用户目录；安装或复检失败立即停止。原软件安装确认保持“回车跳过，任意字符执行”，不升级无关公式。
 
-## 一、适用场景 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、适用场景 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 场景 | 推荐命令 |
 | --- | --- |
@@ -29,9 +49,9 @@
 
 > `gif` 在 JobsMacEnv 里已经是终端 / 屏幕录制入口，所以本工具不抢占 `gif` 短命令。需要转换 GIF 时使用 `to gif 文件`。
 
-## 二、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-### 2.1、终端短命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-4" data-jobs-toc="v2">2.1、终端短命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```zsh
 mp4 ~/Desktop/input.webm
@@ -75,7 +95,7 @@ goodbye-happiness
 goodbye-happiness.mp4
 ```
 
-### 2.2、通用命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-5" data-jobs-toc="v2">2.2、通用命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```zsh
 to mp4 ~/Desktop/input.webm
@@ -89,7 +109,7 @@ mp4 ~/Desktop/a.webm ~/Desktop/b.webm ~/Desktop/c.mov
 
 脚本会逐个询问输出文件名。
 
-### 2.3、通过 `list` 菜单执行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-6" data-jobs-toc="v2">2.3、通过 `list` 菜单执行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 执行：
 
@@ -107,7 +127,7 @@ to mp4
 
 随后脚本会要求拖入或输入源文件路径。
 
-### 2.4、双击 `.command` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+### <span id="jobs-toc-heading-7" data-jobs-toc="v2">2.4、双击 `.command` <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 双击 `to.command` 时，会先展示本 `README.md`，按回车后进入交互模式：
 
@@ -115,7 +135,7 @@ to mp4
 2. 拖入或输入源文件路径。
 3. 输入输出文件名；直接回车沿用原文件名。
 
-## 三、执行前检查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-8" data-jobs-toc="v2">三、执行前检查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 脚本会检查 [**FFmpeg**](https://ffmpeg.org/) 是否可用。
 
@@ -129,7 +149,7 @@ to mp4
 直接回车跳过；输入任意字符后回车执行
 ```
 
-## 四、脚本执行命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-9" data-jobs-toc="v2">四、脚本执行命令 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 命令 | 说明 |
 | --- | --- |
@@ -149,7 +169,7 @@ to mp4
 | `opus 文件` | 提取或转换为 `opus` |
 | `to gif 文件` | 转换为 `gif`，不占用 `gif` 录制命令 |
 
-## 五、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-10" data-jobs-toc="v2">五、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```mermaid
 flowchart TD
@@ -178,7 +198,7 @@ flowchart TD
     J --> K
 ```
 
-## 六、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-11" data-jobs-toc="v2">六、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 日志会写入 `$TMPDIR/命令名.log`。
 
@@ -190,7 +210,7 @@ $TMPDIR/mp4.log
 $TMPDIR/mov.log
 ```
 
-## 七、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-12" data-jobs-toc="v2">七、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - 不覆盖已有文件；如果目标文件已存在，会自动追加 `_1`、`_2`。
 - 输入格式和输出格式相同会直接停止，不做无意义转换。
@@ -200,7 +220,7 @@ $TMPDIR/mov.log
 - 转换失败时，会清理本次生成的半成品输出文件。
 - 脚本不会删除源文件。
 
-## 八、未执行声明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-13" data-jobs-toc="v2">八、未执行声明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 当前文档和脚本只做静态语法检查。由于运行环境不是用户本机 macOS，未实际执行视频转码。
 

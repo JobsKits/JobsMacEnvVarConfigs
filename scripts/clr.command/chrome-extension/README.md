@@ -2,13 +2,21 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [v6 说明](#jobs-toc-heading-1)
+
+</details>
+<!-- jobs-toc:end -->
 
 这是 `clr` 命令配套的本地 Chrome 扩展。
 
 用途：调用 Chrome `downloads` API 清除浏览器下载历史，不删除本地真实文件。
 
-## v6 说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-1" data-jobs-toc="v2">v6 说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 manifest.json 使用合法固定 `key`，扩展 ID 固定为：
 

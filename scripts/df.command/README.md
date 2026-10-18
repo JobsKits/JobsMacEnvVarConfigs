@@ -2,11 +2,27 @@
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
-[toc]
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+- [🔥 前言](#jobs-toc-heading-1)
+- [一、适用场景](#jobs-toc-heading-2)
+- [二、运行方式](#jobs-toc-heading-3)
+- [三、交互流程](#jobs-toc-heading-4)
+- [四、执行前检查](#jobs-toc-heading-5)
+- [五、流程图](#jobs-toc-heading-6)
+- [六、风险说明](#jobs-toc-heading-7)
+- [七、日志文件](#jobs-toc-heading-8)
+- [八、常见问题](#jobs-toc-heading-9)
+
+</details>
+<!-- jobs-toc:end -->
 
 ---
 
-## 🔥 <font id=前言>前言</font>
+## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
 - 采用 Shell 脚本的原因：Shell 来自 [**macOS**](https://www.apple.com/macos/) 原生系统底层，虽然写法相对繁琐冗杂，但执行效率高，并且不需要额外介入 [**Ruby**](https://www.ruby-lang.org)、[**Python**](https://www.python.org) 等第三方运行环境，因此具备更好的移植性。
 
@@ -18,7 +34,7 @@
 
 当前入口内嵌完整的 [**Homebrew**](https://brew.sh/) 健康发现、必要安装及 `shellenv` 激活函数，可单独复制脚本运行，不依赖外置环境模块。健康环境直接复用；必须安装管理器时输入精确大写 `YES` 选择系统目录，其他输入选择用户目录；安装或复检失败立即停止。原软件安装确认保持“回车跳过，任意字符执行”，不升级无关公式。
 
-## 一、适用场景 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、适用场景 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 场景 | 说明 |
 | --- | --- |
@@ -28,7 +44,7 @@
 | Caddy 统一入口 | `Caddyfile` 由脚本自动维护 |
 | 本地短域名访问 | 默认使用 `jobsdocs.test` 这类短域名；脚本会自动写入本机 `$SYSTEM_CONFIG_DIR/hosts`。手机 / 其它电脑优先用 IP 或 Mac 的 `.local` 名称；自定义短域名需要路由器 / 局域网 DNS |
 
-## 二、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、运行方式 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - 最推荐的交互式运行：
 
@@ -80,7 +96,7 @@
   df --rw --auth 'admin:123456@/:rw'
   ```
 
-## 三、交互流程 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、交互流程 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 直接输入：
 
@@ -124,7 +140,7 @@ df
 
 > 不要使用 `.cn`、`.com`、`.net`、`.org`、`.io` 等公网真实后缀做局域网短域名。脚本默认统一使用 `.test`。
 
-## 四、执行前检查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、执行前检查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 脚本会自动检查：
 
@@ -160,7 +176,7 @@ df
 | 其它设备 / 局域网 DNS | 这台 Mac 不能自动改手机；手机要用 `jobsdocs.test` 必须让路由器 / DNS 知道它指向这台 Mac |
 | 访问地址 | 默认是 `http://jobsdocs.test`，不是 `https://`；只有改用 `--external-port 8099` 时才必须带 `:8099` |
 
-## 五、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-6" data-jobs-toc="v2">五、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```mermaid
 flowchart TD
@@ -178,7 +194,7 @@ flowchart TD
   L --> M[回车或 Ctrl+C 停止共享]
 ```
 
-## 六、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-7" data-jobs-toc="v2">六、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - 默认只读，适合临时下载。
 - `--rw` 会允许上传 / 删除 / 编辑，必须谨慎使用。
@@ -189,7 +205,7 @@ flowchart TD
 - 选择短域名时会修改本机 `$SYSTEM_CONFIG_DIR/hosts`，脚本会先备份为 `$SYSTEM_CONFIG_DIR/hosts.backup.jobs-df.时间戳`。
 - 默认使用 `80` 端口，macOS 会要求管理员权限来启动 / 重载 Caddy。
 
-## 七、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-8" data-jobs-toc="v2">七、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 日志 | 路径 |
 | --- | --- |
@@ -197,7 +213,7 @@ flowchart TD
 | dufs 日志 | `$TMPDIR/df.dufs.5010.log` |
 | Caddy 校验日志 | `$TMPDIR/df.caddy.validate.log` |
 
-## 八、常见问题 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+## <span id="jobs-toc-heading-9" data-jobs-toc="v2">八、常见问题 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 | 问题 | 处理 |
 | --- | --- |
