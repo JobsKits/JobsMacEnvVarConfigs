@@ -4,6 +4,8 @@
 
 [toc]
 
+[当前源码目录结构](#repository-layout) · [本仓脚本流程](#repository-script-flows)
+
 ## 🔥 <font id=前言>前言</font>
 
 - 这是一个面向 **MacOS** 的个人开发环境配置同步项目。
@@ -1084,6 +1086,432 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 ```text
 系统入口要轻，环境逻辑要拆；个人终端函数统一放一处，生成文件不要手改。
 ```
+
+## 十一、<span id="repository-layout">当前源码目录结构</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+```text
+🌍JobsMacEnvVarConfigs/
+├── README.md / icon.png / assets/
+├── sync_env.txt                            # 环境变量与挂载声明
+├── Sys/                                    # bash / zsh 启动文件模板
+├── install.command/
+│   ├── install.command                     # 把本仓配置部署到用户环境
+│   └── README.md
+├── scripts/                                # 源码中的功能脚本包
+│   ├── <功能名>.command/                    # 同名脚本与独立 README
+│   ├── entrypoints.command/                # source：注册短命令与分派
+│   ├── flutter_project.command/            # source：Flutter / FVM 路由
+│   ├── runtime_init.command/               # source：运行时初始化
+│   ├── _lib/                               # session / path / Flutter 函数库
+│   ├── update.command/Tests/               # CocoaPods 网络选择隔离回归
+│   └── repair_gem_extensions.command/Tests/ # Gem 修复集成隔离回归
+└── zsh/                                    # source 配置，不作为独立程序执行
+    ├── bootstrap.zsh / aliases.zsh / env_methods.zsh / user_mounts.zsh
+    └── custom/                             # 本地设置、Git、拖入路径与 Shell 行为
+```
+
+这里展示当前检出源码：目录名为小写 `scripts/`；前文安装树中的大写 `~/.JobsMacEnv/Scripts/` 是部署后的运行目录。`Sys/`、`zsh/`、三个 source 模块及 `_lib/` 由安装和启动流程载入，不单独套用可执行脚本流程。下章分别概述本仓 41 个 `.command` 入口和 2 个可独立运行的隔离回归脚本。
+
+## 十二、<span id="repository-script-flows">本仓脚本流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+### [install.command](./install.command/install.command)
+
+> **目的：** 把本仓终端配置、环境声明和短命令部署到当前用户。
+
+* 阅读说明并确认，定位配置源目录，校验 `sync_env.txt` 和 `Sys/.zshrc`。
+* 解析环境声明，检查 Homebrew 和 JDK 17，再准备 `~/.JobsMacEnv` 与 `~/.local/bin`。
+* 同步环境核心、功能脚本及 zsh 配置，生成环境变量和短命令入口，清理约定的旧运行目录。
+* 按提示决定是否替换用户启动配置，并输出重载方式。
+  * 替换已有 `.zshrc` 前先备份；终端需重新加载配置后使用短命令。
+
+### [install.command](./scripts/install.command/install.command)
+
+> **目的：** 通过菜单安装所选开发工具和 Jobs 工作环境依赖。
+
+* 阅读说明，检查 Homebrew 和菜单所需依赖，展示可选择的安装项目。
+* 选择基础工具、软件、语言工具链、Jobs 仓库或下载页面，确认本次处理清单。
+* 逐项检查并执行所选安装任务。
+  * 缺失项安装；已有项是否升级按统一确认结果处理；未选择的项目不执行。
+* 汇总成功、跳过和失败项目，并给出日志位置。
+
+### [update.command](./scripts/update.command/update.command)
+
+> **目的：** 按需更新已使用的开发工具链，并汇总每项维护结果。
+
+* 阅读说明并检查可用工具，按顺序展示系统工具、Homebrew、语言环境和依赖维护项目。
+* 逐项决定是否运行更新。
+  * 交互时回车跳过、非空输入执行；`-t` / `--trust` / `--unattended` 使用无人值守流程，不能无密码授权的步骤跳过。
+* 执行所选维护并记录结果。
+  * CocoaPods 源按实际连通性选用并刷新对应缓存；发现 Ruby 原生扩展缺失时调用修复入口并保留备份。
+* 继续后续独立项目，最后汇总成功、跳过、失败与日志。
+
+### [install_jdk17.command](./scripts/install_jdk17.command/install_jdk17.command)
+
+> **目的：** 准备可被系统识别的 JDK 17。
+
+* 阅读说明并确认，检查或准备 Homebrew。
+* 检测已有 JDK 17。
+  * 已有健康版本直接复用；否则按候选方案安装并逐次复检。
+* 补齐系统识别所需的注册，再输出 Java 路径和版本。
+  * 使用需要注册的 OpenJDK 方案时，会提示通过管理员权限建立系统 Java 目录链接。
+
+### [list.command](./scripts/list.command/list.command)
+
+> **目的：** 把 JobsMacEnv 短命令集中为可搜索、可执行的功能菜单。
+
+* 阅读自述并确认，定位本仓脚本或用户运行目录。
+* 检查 Homebrew 和 fzf，准备功能菜单。
+  * `--plain` / `-p` 直接显示文字清单；依赖不可用或跳过安装时也回退为清单。
+* 在菜单中搜索并选择功能，转交对应脚本、格式转换或函数执行。
+* 功能结束后回车返回菜单；按 Esc 或选择退出结束，并显示日志路径。
+
+### [a.command](./scripts/a.command/a.command)
+
+> **目的：** 打开当前用户的 bash_profile 配置文件。
+
+* 阅读自述并确认，载入公共会话函数。
+* 定位 `~/.bash_profile`，交给系统默认关联应用打开。
+* 查看终端返回结果；文件内容由用户在编辑器中修改。
+
+### [b.command](./scripts/b.command/b.command)
+
+> **目的：** 打开当前用户的 zshrc 配置文件。
+
+* 阅读自述并确认，载入公共会话函数。
+* 定位 `~/.zshrc`，交给系统默认关联应用打开。
+* 查看终端返回结果；保存后可通过 `save` 重载配置。
+
+### [i.command](./scripts/i.command/i.command)
+
+> **目的：** 打开已安装 Xcode 对应的 iOS Simulator 应用。
+
+* 阅读自述并确认，载入公共会话函数。
+* 通过系统 `open -a Simulator` 启动模拟器。
+* 查看应用启动结果；需要下载运行时则使用 `simios` 入口。
+
+### [rb.command](./scripts/rb.command/rb.command)
+
+> **目的：** 重新启动登录 Shell，重新载入启动配置。
+
+* 阅读自述并确认，载入公共会话函数。
+* 取得当前 `SHELL`，以登录模式替换当前执行进程。
+* 通过已注册的终端函数调用时作用于当前终端；独立运行文件时作用于脚本进程。
+
+### [save.command](./scripts/save.command/save.command)
+
+> **目的：** 重新载入常见 bash 和 zsh 用户配置。
+
+* 阅读自述并确认，载入公共会话函数。
+* 依次 source `.bash_profile`、`.bashrc`、`.zshrc` 和 `.profile`。
+  * 不存在的文件给出提示并跳过。
+* 通过已注册的终端函数调用时更新当前会话；独立运行文件只更新脚本进程。
+
+### [x.command](./scripts/x.command/x.command)
+
+> **目的：** 给指定文件增加执行权限并立即运行。
+
+* 阅读自述并确认，接收输入或拖入的路径，处理 `~` 和转义空格。
+* 核验目标为可执行处理的文件。
+  * 路径不存在或为目录时停止，不继续执行。
+* 对目标执行 `chmod +x`，随后立即调用该文件并返回执行结果。
+
+### [zz.command](./scripts/zz.command/zz.command)
+
+> **目的：** 解析拖入路径并切换到真实目录。
+
+* 阅读自述并确认，接收路径并处理 `~`、转义空格。
+* 解析 Finder 替身和符号链接，校验真实目标。
+* 切换目录并输出当前位置。
+  * 目标为文件时进入其父目录；通过已注册函数调用才会改变当前终端目录。
+
+### [shell.command](./scripts/shell.command/shell.command)
+
+> **目的：** 从本机可用 Shell 中选择并设置默认登录 Shell。
+
+* 阅读自述并确认，扫描可用 Shell。
+* 通过菜单选择目标并校验其可用性。
+  * 取消选择则结束；菜单依赖不可用时使用文本选择。
+* 调用 `chsh` 修改当前用户的默认登录 Shell，按系统要求完成验证并查看结果。
+
+### [d.command](./scripts/d.command/d.command)
+
+> **目的：** 进入选择的 Flutter 项目目录。
+
+* 阅读自述并确认，载入 Flutter 项目路径函数。
+* 识别当前或提示选择有效 Flutter 项目，确认目标目录。
+* 切换并输出路径；通过已注册函数调用时改变当前终端目录。
+
+### [check1.command](./scripts/check1.command/check1.command)
+
+> **目的：** 显示 Dart、FVM 和 Flutter 的命令路径与版本。
+
+* 阅读自述并确认，载入 Flutter 环境函数。
+* 逐项查询 Dart、FVM 与 Flutter 的可用路径和版本。
+* 区分 Flutter 函数入口和外部命令，打印诊断结果供排查。
+
+### [check.command](./scripts/check.command/check.command)
+
+> **目的：** 将所选项目切到指定 FVM 版本，并运行 Flutter Doctor。
+
+* 阅读自述并确认，定位有效 Flutter 项目。
+* 打印 Java、`JAVA_HOME` 等环境信息。
+* 执行 `fvm use 3.24.5 --force`，会修改项目的 Flutter 版本配置。
+* 运行 Flutter Doctor 详细检查并输出结果。
+
+### [c.command](./scripts/c.command/c.command)
+
+> **目的：** 为所选 Flutter 项目修复 jenv / JDK 17 选择，再执行环境检查。
+
+* 阅读自述并确认，定位 Flutter 项目并检查 jenv。
+* 处理失效 shim，初始化 jenv export 插件，查找并登记可用 JDK 17。
+* 为项目及当前执行会话选择 JDK 17，打印 Java 信息。
+* 继续调用 `check` 流程，会把项目 FVM 版本切为 `3.24.5` 并运行 Doctor。
+
+### [fixfvm.command](./scripts/fixfvm.command/fixfvm.command)
+
+> **目的：** 清理损坏的 Dart 全局 FVM 安装并重新激活。
+
+* 阅读自述并确认，检查当前 Dart / FVM 环境。
+* 尝试停用全局 FVM，清除对应可执行入口和全局包缓存。
+* 通过当前 Dart 重新激活 FVM，刷新命令缓存并输出结果。
+
+### [buildCheck.command](./scripts/buildCheck.command/buildCheck.command)
+
+> **目的：** 按选择执行 Flutter 构建前的清理、依赖获取和 Doctor 检查。
+
+* 阅读自述并确认，定位当前或选定的 Flutter 项目，选择 FVM 或系统 Flutter。
+* 决定本次是否执行 clean、pub get 和 doctor。
+  * 交互提示直接回车执行、输入内容跳过；`-y` 自动执行，`--no-clean` / `--no-get` / `--no-doctor` 可关闭对应项。
+* 依次处理所选检查并报告状态。
+  * 锁文件比 `pubspec.yaml` 新时可跳过依赖获取；显式强制选项会重新获取。
+
+### [apk.command](./scripts/apk.command/apk.command)
+
+> **目的：** 完成构建前检查后生成 Flutter Android release APK。
+
+* 阅读自述并确认，定位 Flutter 项目并执行 `buildCheck -y`。
+* 检查 FVM / Flutter 版本与 JDK 17，准备 Android 构建环境。
+* 处理项目内可选插件依赖。
+  * 存在 `plugins/htprotect` 时在该目录获取依赖，否则跳过。
+* 执行 release APK 构建，成功后打开 `build/app/outputs` 查看产物。
+
+### [ipa.command](./scripts/ipa.command/ipa.command)
+
+> **目的：** 完成构建前检查后生成 Flutter iOS release IPA。
+
+* 阅读自述并确认，先执行 `buildCheck -y`。
+* 确认后续使用的 Flutter 项目路径并进入项目。
+* 执行 release IPA 构建，成功后打开 `build/ios/ipa` 查看产物。
+
+### [config.command](./scripts/config.command/config.command)
+
+> **目的：** 使用编辑器打开指定用户配置文件。
+
+* 阅读自述并确认，读取配置名或路径参数。
+* 解析目标文件并检查是否存在。
+  * 无参数使用 `~/.zshrc`；相对路径放在用户目录下，绝对路径保持原值。
+* 优先使用已安装 Xcode 打开，未安装则使用 TextEdit；修改由用户保存。
+
+### [code.command](./scripts/code.command/code.command)
+
+> **目的：** 发现本机 Visual Studio Code 命令并转交参数。
+
+* 阅读自述并确认，接收目录、文件及命令选项。
+* 从标准应用位置、Insiders、符号链接和 Spotlight 结果中查找可用 CLI。
+* 把原参数交给找到的命令执行。
+  * 找不到可用命令时返回 `127` 并提示，不自动安装编辑器。
+
+### [codemap.command](./scripts/codemap.command/codemap.command)
+
+> **目的：** 为当前目录或指定多个目录建立并校验 CodeGraph 代码地图。
+
+* 阅读自述并确认，接收当前目录或多个输入 / 拖入路径。
+* 核对目录边界及 `.codegraph` 状态，拒绝系统根目录、用户根目录和不安全链接目标。
+* 寻找已有健康 CodeGraph 命令，为每个目录创建或更新索引。
+  * 未安装时停止并提示，不隐式安装；单个目录失败会记录后继续其它目标。
+* 校验索引状态并汇总每个目录结果；存在失败时返回失败状态。
+
+### [clean.command](./scripts/clean.command/clean.command)
+
+> **目的：** 清理终端历史、会话缓存和用户缓存，并处理失效开发 App 登记。
+
+* 阅读自述并确认本次清理范围。
+* 清除终端历史和会话数据，处理失效开发 App 的启动登记及对应失效产物。
+* 清理用户 `Library/Caches`，并处理 Homebrew 清理。
+  * 缓存路径按脚本边界检查；没有 Homebrew 时跳过 `brew cleanup`。
+* 恢复历史记录设置，清空终端可见内容和滚动区，输出清理结果。
+
+### [clr.command](./scripts/clr.command/clr.command)
+
+> **目的：** 清空 Chrome 下载记录，保留真实下载文件。
+
+* 阅读说明并解析模式，检查本地通信所需运行环境。
+* 准备 Chrome 下载历史扩展。
+  * 首次使用可运行 `--install-extension` 生成扩展并打开加载页面；`--reveal-extension` 查看扩展目录。
+* 确认后通过扩展清理记录。
+  * `--open-only` 只打开页面；`--legacy-ui` 使用界面回退；扩展 ID 可自动发现或通过 `--extension-id` 指定。
+* 显示清理结果，实际下载文件保留。
+
+### [dq.command](./scripts/dq.command/dq.command)
+
+> **目的：** 清理所选文件或 App 的 macOS quarantine 隔离标记。
+
+* 阅读说明，接收参数或循环拖入路径并校验目标。
+* 检查目标的 `com.apple.quarantine` 属性。
+* 仅对所选目标递归移除隔离属性。
+  * `--dry-run` 只预览；`--open` 在处理后尝试打开目标。
+* 汇总处理结果，不修改系统全局 Gatekeeper 设置。
+
+### [df.command](./scripts/df.command/df.command)
+
+> **目的：** 用 dufs 与 Caddy 临时共享所选本地目录。
+
+* 阅读说明，选择共享目录、端口和访问方式，检查服务依赖。
+* 生成本次共享配置。
+  * 默认只读；`--rw` 开启写入，认证参数控制访问；短域名和 hosts 配置按选择处理。
+* 启动文件服务与反向代理，显示局域网访问地址。
+* 结束共享并清理本次受管进程和临时配置。
+  * 指定保留配置选项时按该模式保留。
+
+### [download.command](./scripts/download.command/download.command)
+
+> **目的：** 下载指定媒体地址，并按配置在不同下载后端间处理失败。
+
+* 阅读说明，取得媒体 URL、输出参数和后端选择。
+* 检查所需工具，默认使用 yt-dlp，可按参数读取浏览器 Cookies。
+* 执行下载并记录结果。
+  * yt-dlp 失败且已配置 cobalt API 时才自动回退；强制 cobalt 模式也必须提供可用 API 地址。
+* 输出保存位置或失败原因，供用户检查产物。
+
+### [to.command](./scripts/to.command/to.command)
+
+> **目的：** 用 FFmpeg 将所选媒体转换为指定格式。
+
+* 阅读说明，从命令参数、格式别名或交互输入确定目标格式和来源文件。
+* 检查转换依赖与输入文件，同格式项目按规则跳过。
+* 逐项选择输出名并在源目录转换。
+  * 回车保留原文件名；目标重名时增加后缀，避免覆盖已有文件。
+* 输出每项转换结果与产物路径。
+
+### [gif.command](./scripts/gif.command/gif.command)
+
+> **目的：** 录制终端或全屏，并导出 GIF / MP4。
+
+* 阅读说明，检查 asciinema、agg、FFmpeg 等所选模式需要的依赖。
+* 选择录制方式和输出设置。
+  * 默认回车进入终端录制，非空输入进入设置；`--repair` 对已有录制重新生成产物。
+* 开始终端或屏幕录制，按提示用 `Ctrl+C` 结束。
+* 转换并保存 GIF / MP4，输出录制文件和产物位置。
+
+### [m5c.command](./scripts/m5c.command/m5c.command)
+
+> **目的：** 比较两个文件的 MD5 摘要，辅助检查内容是否相同。
+
+* 阅读说明，依次输入或拖入两个文件。
+* 处理路径并确认两个目标都可读，选择本机可用 MD5 工具。
+* 计算并展示摘要，报告相同或不同；不改写原文件。
+
+### [flat.command](./scripts/flat.command/flat.command)
+
+> **目的：** 解码 URL 百分号编码，并复制解码结果。
+
+* 阅读说明并检查 Python，接收参数或交互输入。
+* 对文本执行 URL 解码。
+  * 使用 `--plus` 时额外把加号当作空格。
+* 显示结果并复制到剪贴板；交互模式可继续输入或退出。
+
+### [decode.command](./scripts/decode.command/decode.command)
+
+> **目的：** 交互式解码 URL 编码文本并复制结果。
+
+* 阅读说明并检查 Python，进入文本输入循环。
+* 对本次输入执行 URL Decode 并显示结果。
+* 处理剪贴板和下一次输入。
+  * 解码结果非空时自动复制；输入 `q` 结束。
+
+### [cor.command](./scripts/cor.command/cor.command)
+
+> **目的：** 把输入颜色转换为常用 HEX、RGB 和 RGBA 表达。
+
+* 阅读说明，从参数或交互输入取得颜色。
+* 校验简写 / 完整 HEX、RGB、RGBA 或 `0xAARRGGBB` 格式并解析通道。
+* 输出各格式结果和终端色块。
+  * 终端按能力使用真彩色或 256 色；非法输入给出提示，交互模式可继续或退出。
+
+### [ts.command](./scripts/ts.command/ts.command)
+
+> **目的：** 把不同精度的 Unix 时间戳转换为可读日期时间。
+
+* 阅读说明并检查 Python，输入秒、毫秒、微秒或纳秒时间戳。
+* 选择显示时区。
+  * 默认使用系统时区，也可通过可用的菜单选择其它时区。
+* 输出完整时间、星期和时区偏移；按 Esc 结束。
+
+### [trs.command](./scripts/trs.command/trs.command)
+
+> **目的：** 通过 macOS 原生翻译能力交互翻译文本。
+
+* 阅读说明，检查系统版本及 translate-cli、fzf 等所需依赖。
+* 输入待译文本，或进入设置选择语言和方向。
+  * 单个空格进入设置；中文保持为固定的一侧。
+* 调用系统翻译并展示结果，可继续输入或退出。
+
+### [tts.command](./scripts/tts.command/tts.command)
+
+> **目的：** 选择本地语音引擎，将输入文本生成为可播放语音。
+
+* 阅读说明，通过菜单或文本选择 MOSS-TTS-Nano、VoxCPM2 或 Supertonic。
+* 准备所选引擎的 Python 环境、模型和本地服务。
+  * 首次使用可能下载依赖与模型，按该引擎的设置选择声音或参考音频。
+* 接收参数或交互文本，合成并播放语音。
+  * Supertonic 的中文输入按脚本策略使用 macOS `say` 回退。
+* 显示生成和播放结果，可继续输入或结束。
+
+### [simios.command](./scripts/simios.command/simios.command)
+
+> **目的：** 检查 Xcode 环境并下载或补齐 iOS Simulator Runtime。
+
+* 阅读说明，选择完整 Xcode，检查开发者目录、许可和首次启动状态。
+* 根据检查结果选择修复前置条件。
+  * 需要系统授权或首次启动处理时按提示确认。
+* 列出现有运行时，再按选择使用 `xcodebuild` 下载 iOS 运行时。
+* 复查并汇总结果；此入口处理运行时准备，不构建业务 App。
+
+### [pods.command](./scripts/pods.command/pods.command)
+
+> **目的：** 逐项检查本地 Pod 的 podspec 校验及编译结果。
+
+* 阅读说明，选择或读取已记住的本地 Pod 根目录。
+* 选择 podspec、平台和检查选项，校验当前 SDK 与工具。
+* 在独立检查环境执行 lint / 编译，保存编译输出并显示结论。
+* 根据结果选择重试、下一个 Pod、更换根目录或退出。
+
+### [repair_gem_extensions.command](./scripts/repair_gem_extensions.command/repair_gem_extensions.command)
+
+> **目的：** 检查或修复当前 CocoaPods Ruby 环境中缺失的原生 Gem 扩展。
+
+* 阅读说明，确认当前 CocoaPods 所用 Ruby 与 Gem 路径，筛出缺失扩展。
+* 选择检查或实际修复。
+  * 默认 `--check` 只检查；`--repair` 进入修复，交互确认或 `-t` 无人值守模式控制执行。
+* 修复前备份目标，按现有 Ruby / Gem 版本重新构建并验证加载。
+* 汇总每个目标的修复结果。
+  * 构建或加载失败时恢复对应备份，不通过整体升级版本规避错误。
+
+### [cocoapods_network_tests.zsh](./scripts/update.command/Tests/cocoapods_network_tests.zsh)
+
+> **目的：** 在隔离环境回归验证更新脚本的 CocoaPods 网络源选择。
+
+* 建立临时目录及 curl、Git、pod、Homebrew、Gem 等替身命令。
+* 抽取更新脚本相关函数，验证源选择、对应缓存刷新、目录归属及失败处理。
+* 汇总断言，失败时返回非零状态，结束时清理本次临时文件和进程。
+
+### [update_integration_test.zsh](./scripts/repair_gem_extensions.command/Tests/update_integration_test.zsh)
+
+> **目的：** 在隔离环境回归验证 Gem 修复与更新脚本的集成行为。
+
+* 建立临时 Gem、rbenv、Ruby 和 Specs 环境，不修改宿主机 Gem 安装。
+* 验证修复顺序、错误传播、独立交互、颜色输出及终端条件。
+* 汇总断言，失败时返回非零状态，并清理本次临时资源。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
 
