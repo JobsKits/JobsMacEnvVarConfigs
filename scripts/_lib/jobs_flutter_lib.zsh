@@ -258,7 +258,16 @@ jobs_flutter_check1_impl() {
 jobs_flutter_rb_impl() { exec -l "$SHELL"; }
 jobs_flutter_a_impl() { open "$HOME/.bash_profile"; }
 jobs_flutter_b_impl() { open "$HOME/.zshrc"; }
-jobs_flutter_i_impl() { open -a Simulator; }
+# 旧 Flutter 入口复用会话库，保持新旧 Xcode 的模拟器定位一致。
+jobs_flutter_i_impl() {
+  local session_lib="${${(%):-%x}:A:h}/jobs_session_lib.zsh"
+  if [[ ! -f "$session_lib" ]]; then
+    print -u2 -r -- "✖ 缺少模拟器启动库：$session_lib"
+    return 1
+  fi
+  source "$session_lib" || return 1
+  jobs_session_i_impl "$@"
+}
 
 # ✅ d：默认进入你写死的项目目录（可传参覆盖）
 jobs_flutter_d_impl() {

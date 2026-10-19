@@ -3,6 +3,7 @@
 "/.jobs-markdown-toc/README.md" filter=jobs-markdown-toc
 "/README.md" filter=jobs-markdown-toc
 "/install.command/README.md" filter=jobs-markdown-toc
+"/scripts/README.md" filter=jobs-markdown-toc
 "/scripts/_lib/jobs_git_network_strategy/README.md" filter=jobs-markdown-toc
 "/scripts/a.command/README.md" filter=jobs-markdown-toc
 "/scripts/apk.command/README.md" filter=jobs-markdown-toc

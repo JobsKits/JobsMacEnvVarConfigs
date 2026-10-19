@@ -1,8 +1,8 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：i.command
-# - 核心用途：执行“i”对应的自动化任务。
-# - 影响范围：可能修改当前项目、用户环境或脚本指定的目标。
+# - 核心用途：打开当前 Xcode 的 Device Hub（Xcode 27）或旧版 Simulator。
+# - 影响范围：启动模拟器管理应用；不安装组件、不修改项目或全局开发目录。
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，按 Ctrl+C 可取消。
 
 
@@ -30,61 +30,12 @@ jobs_intro_style() {
     }
   '
 }
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
-SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
-SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
-LOG_FILE="/tmp/${SCRIPT_BASENAME}.log"
-ENV_HOME="${JOBS_MAC_ENV_HOME:-$HOME/.JobsMacEnv}"
-# ---------- 彩色日志 ----------
-log()            { echo -e "$1" | tee -a "$LOG_FILE"; }
-# 按当前输出级别记录终端信息，并同步写入脚本日志。
-info_echo()      { log "[1;34mℹ $1[0m"; }
-# 按当前输出级别记录终端信息，并同步写入脚本日志。
-warm_echo()      { log "[1;33m$1[0m"; }
-# 按当前输出级别记录终端信息，并同步写入脚本日志。
-note_echo()      { log "[1;35m➤ $1[0m"; }
-# 按当前输出级别记录终端信息，并同步写入脚本日志。
-error_echo()     { log "[1;31m✖ $1[0m"; }
-# 按当前输出级别记录终端信息，并同步写入脚本日志。
-gray_echo()      { log "[0;90m$1[0m"; }
-# 按当前输出级别记录终端信息，并同步写入脚本日志。
-bold_echo()      { log "[1m$1[0m"; }
-# 展示脚本用途和影响范围，并在执行前等待用户确认。
-jobs_i_show_readme_and_wait() {
-  clear 2>/dev/null || true
-  cat <<'EOFREADME' | tee -a "$LOG_FILE" | jobs_intro_style auto
-============================================================
-i - 打开模拟器
-============================================================
-
-这是 i.command 的内置自述，不读取同级 README.md。
-
-功能：
-  打开 iOS Simulator。
-
-结构：
-  Scripts/i.command/i.command
-  Scripts/i.command/README.md
-
-运行：
-  i
-  i [参数...]
-
-说明：
-  - 具体实现放在 Scripts 私有库和本命令入口中。
-  - 终端可输入命令本身只通过本文件对外暴露。
-  - 日志路径：/tmp/i.log
-============================================================
-EOFREADME
-
-  if [[ -t 0 && "${JOBS_MAC_ENV_SKIP_README:-}" != "1" ]]; then
-    log "" | jobs_intro_style body
-    warm_echo "按回车继续执行 i..." | jobs_intro_style body
-    local _answer=""
-    IFS= read -r _answer
-  fi
-}
-# 封装 jobs_i_source_lib 对应的独立处理逻辑。
+SCRIPT_DIR=""
+SCRIPT_PATH=""
+SCRIPT_BASENAME="i"
+LOG_FILE=""
+ENV_HOME=""
+# 优先加载相邻会话库，部署目录作为兼容回退。
 jobs_i_source_lib() {
   local lib_name="$1"
   local candidate=""
@@ -95,56 +46,55 @@ jobs_i_source_lib() {
 
   for candidate in "${candidates[@]}"; do
     if [[ -f "$candidate" ]]; then
-      source "$candidate"
+      source "$candidate" || return 1
       return 0
     fi
   done
 
-  error_echo "缺少私有库：$lib_name"
-  error_echo "请重新执行 JobsMacEnv 安装脚本。"
+  print -u2 -r -- "✖ 缺少私有库：$lib_name"
+  print -u2 -r -- "请重新执行 JobsMacEnv 安装脚本。"
   return 1
 }
 # 封装 i 对应的独立处理逻辑。
 i() {
   jobs_session_i_impl "$@"
 }
-# 编排完整业务流程，复杂步骤继续下沉到职责明确的函数。
-jobs_i_main() {
-  # 展示脚本说明并等待用户确认影响范围。
-  jobs_i_show_readme_and_wait
-  # 执行当前流程中的独立业务步骤：i。
-  i "$@"
-}
 # 打印脚本内置自述，并按运行入口决定是否等待用户确认。
 show_script_intro_and_wait() {
+  [[ "${JOBS_MAC_ENV_SOURCE_MODE:-}" == "1" ]] && return 0
   print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
   print -r -- '脚本名称：i.command' | jobs_intro_style title
-  print -r -- '核心用途：执行“i”对应的自动化任务。' | jobs_intro_style body
-  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。' | jobs_intro_style body
+  print -r -- '核心用途：打开 Xcode 27 Device Hub 或旧版 iOS Simulator。' | jobs_intro_style body
+  print -r -- '影响范围：仅启动应用；不安装组件、不修改项目或全局开发目录。' | jobs_intro_style body
+  print -r -- '定位顺序：DEVELOPER_DIR → xcode-select → 常见 Xcode 安装目录。' | jobs_intro_style body
+  print -r -- '日志位置：系统临时目录中的 i.log。' | jobs_intro_style body
   print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
   print -r -- '============================================================================' | jobs_intro_style title
   if [[ ! -t 0 ]]; then
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
-    return 1
+    exit 1
   fi
-  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
+  local answer=""
+  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" answer || exit 1
 }
-# 统一收口脚本入口，仅委托已经拆分完成的业务流程。
-main() {
-  # 展示脚本内置自述，并按运行入口完成防误触确认。
-  show_script_intro_and_wait
-  # 执行 jobs_i_main 对应的独立业务步骤。
-  jobs_i_main "$@"
-}
-# 初始化脚本运行环境，并集中承载原有的顶层执行逻辑。
-initialize_script_module() {
+# 确认后初始化路径和日志，加载会话库并记录应用启动结果。
+jobs_i_main() {
+  emulate -L zsh
   set -o pipefail
   setopt NO_NOMATCH
-  : > "$LOG_FILE"
-  jobs_i_source_lib "jobs_session_lib.zsh" || { return 1 2>/dev/null || exit 1; }
-  if [[ "${JOBS_MAC_ENV_SOURCE_MODE:-}" != "1" ]]; then
-    main "$@"
-  fi
+  SCRIPT_DIR="${${(%):-%x}:A:h}"
+  SCRIPT_PATH="$SCRIPT_DIR/i.command"
+  ENV_HOME="${JOBS_MAC_ENV_HOME:-$HOME/.JobsMacEnv}"
+  LOG_FILE="${TMPDIR:-/tmp}/${SCRIPT_BASENAME}.log"
+  jobs_i_source_lib "jobs_session_lib.zsh" || return 1
+  [[ "${JOBS_MAC_ENV_SOURCE_MODE:-}" == "1" ]] && return 0
+  : > "$LOG_FILE" || return 1
+  i "$@" 2>&1 | tee -a "$LOG_FILE"
 }
-# 加载模块时统一执行必要的初始化和入口分派。
-initialize_script_module "$@"
+# 编排一次自述确认和模拟器启动。
+main() {
+  show_script_intro_and_wait # 展示准确用途并等待一次回车，取消时不执行业务。
+  jobs_i_main "$@" # 加载启动逻辑，定位应用并记录返回结果。
+}
+
+main "$@"

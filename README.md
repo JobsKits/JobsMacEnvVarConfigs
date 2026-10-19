@@ -1295,8 +1295,8 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 > **目的：** 打开已安装 Xcode 对应的 iOS Simulator 应用。
 
 * 阅读自述并确认，载入公共会话函数。
-* 通过系统 `open -a Simulator` 启动模拟器。
-* 查看应用启动结果；需要下载运行时则使用 `simios` 入口。
+* 按 `DEVELOPER_DIR`、当前 `xcode-select` 和常见安装目录定位应用；Xcode 27 打开 Device Hub，旧版打开 Simulator。
+* 按完整应用路径启动并记录错误；显式开发目录无效时停止，需要下载运行时则使用 `simios` 入口。
 
 ### <span id="jobs-toc-heading-45" data-jobs-toc="v2">[rb.command](./scripts/rb.command/rb.command)</span><!-- jobs-toc:heading-end -->
 

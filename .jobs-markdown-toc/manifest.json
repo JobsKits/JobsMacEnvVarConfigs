@@ -4,6 +4,7 @@
     ".jobs-markdown-toc/README.md",
     "README.md",
     "install.command/README.md",
+    "scripts/README.md",
     "scripts/_lib/jobs_git_network_strategy/README.md",
     "scripts/a.command/README.md",
     "scripts/apk.command/README.md",
