@@ -23,6 +23,10 @@ _jobs_flutter_project_lib_loaded="false"
 flutter() {
   jobs_flutter_flutter_impl "$@"
 }
+# 🔥 dart() 重载（优先 FVM，跟随项目锚定版本）🔥
+dart() {
+  jobs_flutter_dart_impl "$@"
+}
 # 初始化脚本运行环境，并集中承载原有的顶层执行逻辑。
 initialize_script_module() {
   for _jobs_flutter_project_lib in "${_jobs_flutter_project_lib_candidates[@]}"; do

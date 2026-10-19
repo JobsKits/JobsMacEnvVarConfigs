@@ -134,6 +134,34 @@ jobs_setup_android() {
   jobs_path_add "$sdk_dir/tools/bin"
 }
 
+# 把 Flutter 兜底候选目录挂到 PATH（逗号分隔，取第一个真实存在的目录）。
+jobs_flutter_link_path_candidates() {
+  local candidates_csv="$1"
+  local item=""
+
+  # zsh 默认不做单词拆分（与 bash 的 IFS + $var 语义不同）。
+  # 这里必须用 ${(s:,:)} 显式切分，否则整串会被当成单个路径，导致一个候选都挂不上。
+  for item in ${(s:,:)candidates_csv}; do
+    item="${item//\$HOME/$HOME}"
+    [[ -n "$item" ]] || continue
+    if [[ -d "$item" ]]; then
+      jobs_path_add "$item"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# 挂载项目感知的 flutter()/dart()：版本按当前项目 .fvmrc 解析，而不是固定 default。
+jobs_flutter_enable_project_aware() {
+  local env_home="${JOBS_MAC_ENV_HOME:-$HOME/.JobsMacEnv}"
+  local hook="$env_home/Scripts/flutter_project.command/flutter_project.command"
+
+  [[ -f "$hook" ]] || return 0
+  jobs_source_if_exists "$hook"
+}
+
 jobs_setup_flutter() {
   local use_fvm="$1"
   local candidates_csv="$2"
@@ -144,17 +172,12 @@ jobs_setup_flutter() {
     jobs_path_add "$HOME/.pub-cache/bin"
   fi
 
-  local old_ifs="$IFS"
-  IFS=','
-  local item
-  for item in $candidates_csv; do
-    item="${item/#\$HOME/$HOME}"
-    if [[ -d "$item" ]]; then
-      jobs_path_add "$item"
-      break
-    fi
-  done
-  IFS="$old_ifs"
+  jobs_flutter_link_path_candidates "$candidates_csv" || true
+
+  # 开启 FVM 时把项目感知的解析器挂进当前 shell，保证 flutter/dart 跟随项目锚定版本。
+  if [[ "$use_fvm" == "true" ]]; then
+    jobs_flutter_enable_project_aware
+  fi
 }
 
 jobs_setup_node() {

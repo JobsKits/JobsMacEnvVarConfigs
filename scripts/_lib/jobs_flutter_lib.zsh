@@ -144,21 +144,30 @@ jobs_flutter_save_impl() {
   echo -e "\n📎 ⌘Command + 点击路径可打开对应文件（macOS Terminal 支持）"
 }
 
+# 从当前目录向上查找 FVM 项目根（.fvmrc / .fvm/flutter_sdk / fvm_config.json 任一命中即可）。
+jobs_flutter_project_root() {
+  emulate -L zsh
+
+  local d="$PWD"
+
+  while [[ "$d" != "/" && -n "$d" ]]; do
+    if [[ -f "$d/.fvmrc" || -x "$d/.fvm/flutter_sdk/bin/flutter" || -f "$d/.fvm/fvm_config.json" ]]; then
+      print -r -- "$d"
+      return 0
+    fi
+    d="${d:h}"
+  done
+
+  return 1
+}
+
 # 🔥 flutter() 重载（优先 FVM）🔥
 jobs_flutter_flutter_impl() {
   emulate -L zsh
   setopt no_aliases
 
-  local d="$PWD"
   local root=""
-
-  while [[ "$d" != "/" ]]; do
-    if [[ -f "$d/.fvmrc" || -x "$d/.fvm/flutter_sdk/bin/flutter" || -f "$d/.fvm/fvm_config.json" ]]; then
-      root="$d"
-      break
-    fi
-    d="${d:h}"
-  done
+  root="$(jobs_flutter_project_root 2>/dev/null || true)"
 
   if [[ -n "$root" && -x "$root/.fvm/flutter_sdk/bin/flutter" ]]; then
     command "$root/.fvm/flutter_sdk/bin/flutter" "$@"
@@ -182,6 +191,39 @@ jobs_flutter_flutter_impl() {
   fi
 
   print -u2 "✖ flutter: command not found（未安装系统 Flutter，且当前目录不在 FVM 项目内）"
+  return 127
+}
+
+# 🔥 dart() 重载（优先 FVM，避免与项目 Flutter 的 Dart 版本错位）🔥
+jobs_flutter_dart_impl() {
+  emulate -L zsh
+  setopt no_aliases
+
+  local root=""
+  root="$(jobs_flutter_project_root 2>/dev/null || true)"
+
+  if [[ -n "$root" && -x "$root/.fvm/flutter_sdk/bin/dart" ]]; then
+    command "$root/.fvm/flutter_sdk/bin/dart" "$@"
+    return $?
+  fi
+
+  if [[ -n "$root" && ( -f "$root/.fvmrc" || -f "$root/.fvm/fvm_config.json" ) ]]; then
+    if command -v fvm >/dev/null 2>&1; then
+      command fvm dart "$@"
+      return $?
+    fi
+    print -u2 "✖ 检测到 FVM 项目，但找不到 fvm 命令。请先安装 fvm。"
+    return 127
+  fi
+
+  local external_dart=""
+  external_dart="$(jobs_flutter_find_external_command dart 2>/dev/null || true)"
+  if [[ -n "$external_dart" ]]; then
+    "$external_dart" "$@"
+    return $?
+  fi
+
+  print -u2 "✖ dart: command not found（未安装系统 Flutter，且当前目录不在 FVM 项目内）"
   return 127
 }
 

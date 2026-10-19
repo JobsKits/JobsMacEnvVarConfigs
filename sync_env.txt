@@ -11,6 +11,10 @@ ANDROID_SDK_DEFAULT=$HOME/Library/Android/sdk
 ANDROID_STUDIO_APP=/Applications/Android Studio.app
 
 [FLUTTER]
+# USE_FVM=true 时做两件事：
+#   1) 把 FLUTTER_CANDIDATES 里第一个真实存在的目录挂到 PATH（兜底，任何 shell 都能直接用）；
+#   2) 在交互式 shell 挂载 flutter()/dart()，版本按当前项目的 .fvmrc 解析，而不是固定用 default。
+# FLUTTER_CANDIDATES 逗号分隔，按顺序取第一个存在且为目录的路径。
 USE_FVM=true
 FLUTTER_CANDIDATES=$HOME/fvm/default/bin,$HOME/development/flutter/bin
 

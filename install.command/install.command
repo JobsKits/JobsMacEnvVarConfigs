@@ -898,7 +898,9 @@ show_intro_and_wait() {
 并同步到 ~/.JobsMacEnv/Scripts/<命令>.command/<命令>.command。
 
 例外：
-  - flutter_project.command 保持原版位置，只由 list 菜单按需加载；不会生成 ~/.local/bin/flutter，避免覆盖系统 Flutter。
+  - flutter_project.command 保持原版函数模块位置，不生成 ~/.local/bin/flutter（避免覆盖系统 Flutter）。
+    USE_FVM=true 时，env.zsh 会自动加载该模块，flutter()/dart() 按当前项目 .fvmrc 解析版本；
+    PATH 兜底由 FLUTTER_CANDIDATES 中第一个存在的目录负责。
   - install_jdk17.command 保持原版脚本位置；不会生成 ~/.local/bin/jdk17。
 
 可执行：
@@ -1000,8 +1002,9 @@ fzf 来源 Homebrew。
 
 规则：
 
-  直接按 Enter              跳过替换
-  输入 YES 后回车           备份并替换 ~/.zshrc
+  直接按 Enter              立即替换 ~/.zshrc（不备份）
+  输入大写 YES 后回车        先备份再替换 ~/.zshrc
+  输入任意其它字符后回车      跳过替换
 
 ------------------------------------------------------------
 九、流程
@@ -1045,19 +1048,25 @@ prompt_replace_system_zshrc() {
 
   log ""
   warn_echo "是否替换系统当前 ~/.zshrc？"
-  log "👉 直接按 [Enter]：跳过替换"
-  log "👉 输入 YES 后回车：备份并替换 ~/.zshrc"
-  IFS= read -r answer
+  log "👉 直接按 [Enter]：立即替换（不备份）"
+  log "👉 输入大写 YES 后回车：先备份再替换"
+  log "👉 输入任意其它字符后回车：跳过替换"
 
-  if [[ "$answer" != "YES" ]]; then
-    note_echo "已跳过替换系统 .zshrc"
+  # 非交互执行（无终端输入 / EOF）时不能把空输入当成"替换"，否则会静默覆盖用户配置。
+  if ! IFS= read -r answer; then
+    warn_echo "未检测到交互输入，已跳过替换系统 .zshrc"
     return 0
   fi
 
-  if [[ -f "$system_zshrc" ]]; then
-    local backup="$HOME/.zshrc.backup.$(date +%Y%m%d%H%M%S)"
-    cp "$system_zshrc" "$backup"
-    success_echo "已备份当前 .zshrc：$backup"
+  if [[ "$answer" == "YES" ]]; then
+    if [[ -f "$system_zshrc" ]]; then
+      local backup="$HOME/.zshrc.backup.$(date +%Y%m%d%H%M%S)"
+      cp "$system_zshrc" "$backup"
+      success_echo "已备份当前 .zshrc：$backup"
+    fi
+  elif [[ -n "$answer" ]]; then
+    note_echo "已跳过替换系统 .zshrc"
+    return 0
   fi
 
   cp "$generated_zshrc" "$system_zshrc"

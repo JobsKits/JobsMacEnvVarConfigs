@@ -230,7 +230,15 @@ chmod +x install.command/install.command
 9. `gif` 首次使用时会检测 Homebrew / asciinema / agg / ffmpeg；启动时按回车默认录制当前终端，进入设置菜单可选择全屏录制
 9. `simios` 会先检测完整 Xcode / xcode-select / xcodebuild / Xcode license / 首次启动组件，再执行 iOS Simulator Runtime 下载
 
-如果选择替换 `~/.zshrc`，脚本会先自动备份旧文件：
+替换 `~/.zshrc` 的三种输入：
+
+```text
+直接回车              立即替换（不备份）
+大写 YES + 回车        先备份再替换
+其它任意字符 + 回车     跳过替换
+```
+
+选择备份时，旧文件会保存为：
 
 ```text
 ~/.zshrc.backup.YYYYMMDDHHMMSS
@@ -255,7 +263,7 @@ flowchart TD
     T[同步 list / trs / gif / simios / m5c / flat 到 Scripts 和 ~/.local/bin]
     G[生成环境变量和别名]
     H{是否替换 ~/.zshrc}
-    I[备份并替换 ~/.zshrc]
+    I[替换 ~/.zshrc，输入 YES 时先备份]
     J[保留当前 ~/.zshrc]
     K[提示 source ~/.zshrc]
     L([完成])
@@ -290,6 +298,8 @@ JAVA_CANDIDATES=temurin@17,zulu@17,openjdk@17
 ANDROID_SDK_DEFAULT=$HOME/Library/Android/sdk
 
 [FLUTTER]
+# USE_FVM=true：PATH 兜底 + 交互式 shell 挂载按 .fvmrc 解析版本的 flutter()/dart()
+# FLUTTER_CANDIDATES：逗号分隔，按顺序取第一个真实存在的目录挂到 PATH
 USE_FVM=true
 FLUTTER_CANDIDATES=$HOME/fvm/default/bin,$HOME/development/flutter/bin
 
@@ -1153,6 +1163,7 @@ JOBS_DART_CLI_COMPLETION_FILE="~/.dart-cli-completion/zsh-config.zsh"
 - 替换 `~/.zshrc` 前会自动备份，但仍建议先确认当前配置没有重要未迁移内容。
 - `env.zsh` 和 `aliases.zsh` 是生成文件，不建议直接长期手改。
 - `zsh/custom/local.zsh` 是 Scripts 模块加载器；固定项目路径主要在 `Scripts/_lib/jobs_flutter_lib.zsh` 中，`flutter` 函数由 `Scripts/flutter_project.command/flutter_project.command` 加载，迁移到新机器后建议先检查再使用。
+- `USE_FVM=true` 时，`env.zsh` 会在每次开启交互式 shell 时自动加载上面的 Flutter 模块：`flutter` / `dart` 按当前项目 `.fvmrc` 解析 SDK 版本；不在 FVM 项目内则回退到 `FLUTTER_CANDIDATES` 里第一个存在的目录（通常是 `~/fvm/default/bin`），再回退到 PATH 上的真实 `flutter`。FVM 项目内不需要再手动 `fvm flutter ...`。
 - `trs` 依赖 macOS 原生翻译能力；系统版本、语言资源和语言对支持情况会直接影响可用性。
 - 如果安装后没有立即生效，执行 `source ~/.zshrc`，或者重新打开终端。
 
@@ -1670,7 +1681,7 @@ source ~/.zshrc
 
 ## <span id="jobs-toc-heading-84" data-jobs-toc="v2">JobsMacEnv 自定义命令收口规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-- 以终端输入窗口为准：大部分用户可输入、且不是系统原生命令的自定义命令，独立放入 `Scripts/<命令>.command/<命令>.command`；`flutter_project.command` 保持原版函数模块位置，不生成 `~/.local/bin/flutter`；`install_jdk17.command` 保持原版脚本位置，不生成 `~/.local/bin/jdk17`。
+- 以终端输入窗口为准：大部分用户可输入、且不是系统原生命令的自定义命令，独立放入 `Scripts/<命令>.command/<命令>.command`；`flutter_project.command` 保持原版函数模块位置，不生成 `~/.local/bin/flutter`（`USE_FVM=true` 时由 `env.zsh` 自动加载）；`install_jdk17.command` 保持原版脚本位置，不生成 `~/.local/bin/jdk17`。
 - 每个命令目录必须有同级 `README.md`。
 - 运行时展示的自述必须写在脚本内部，不读取同级 `README.md`。
 - `list` 是菜单入口，菜单中不显示 `list` 自己，其它自定义命令都应显示。
