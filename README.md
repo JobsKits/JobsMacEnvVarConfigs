@@ -889,9 +889,9 @@ export JOBS_GIT_QUOTEPATH_FIX=false
 source ~/.zshrc
 ```
 
-推送网络策略由 [`jobs_git_network_strategy`](./scripts/_lib/jobs_git_network_strategy/README.md) 独立模块处理：`git_behavior.zsh` 把运行目录中的 `bin/` 加到 `PATH`，原有 `git` 函数继续负责中文路径修正。终端 `git push` 与 [**Sourcetree**](https://www.sourcetreeapp.com/) 普通推送按钮使用同一入口；Sourcetree 须选择系统 Git，并指向该模块的 `bin/git`。
+网络策略由 [`jobs_git_network_strategy`](./scripts/_lib/jobs_git_network_strategy/README.md) 独立模块处理：`git_behavior.zsh` 把运行目录中的 `bin/` 加到 `PATH`，原有 `git` 函数继续负责中文路径修正。终端的 HTTP / HTTPS `clone`、`fetch`、`pull`、`ls-remote`、`push` 与 [**Sourcetree**](https://www.sourcetreeapp.com/) 对应操作使用同一入口；Sourcetree 须选择系统 Git，并指向该模块的 `bin/git`。
 
-普通推送先按原有网络路径执行；仅在尚未出现传输 / 远端进度的连接失败或 DNS / 连接超时时，才读取当前 macOS HTTPS / HTTP / SOCKS 代理，短时探测后使用首个可用候选重试一次。显式代理、旁路规则、认证 / 权限 / 分支 / 证书错误保持原行为；代理只注入本次子进程，不保存全局 `http.proxy`。首次连接仍沿用 Git 原生超时，可能先等待几十秒；探测与重试边界、部署和独立恢复入口详见模块说明。
+网络操作前动态读取当前 macOS HTTPS / HTTP / SOCKS 代理，默认优先验证并使用可达的系统代理；VPN 关闭或代理候选不可用时，再短时探测正常链路，两路均不可用则明确报错。选路后，原始 Git 业务命令只执行一次；代理只注入该次子进程，不保存全局 `http.proxy`，也不依赖 VPN 品牌或固定端口。TUN 接管由正常网络路径承接；可用 `JOBS_GIT_ROUTE_PRIORITY=direct` 改为直连优先。显式代理、空代理、旁路、认证 / 权限 / 证书错误及未支持的调用形式保持原行为；详细覆盖边界和验证入口见模块说明。
 
 #### <span id="jobs-toc-heading-28" data-jobs-toc="v2">3.11 `trs`：macOS 原生翻译入口 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -1211,7 +1211,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 │   ├── flutter_project.command/            # source：Flutter / FVM 路由
 │   ├── runtime_init.command/               # source：运行时初始化
 │   ├── _lib/                               # session / path / Flutter 函数库与 Git 网络策略
-│   │   └── jobs_git_network_strategy/      # Git 推送入口、隔离回归和使用说明
+│   │   └── jobs_git_network_strategy/      # Git 动态网络入口、隔离回归和使用说明
 │   ├── update.command/Tests/               # CocoaPods 网络选择隔离回归
 │   └── repair_gem_extensions.command/Tests/ # Gem 修复集成隔离回归
 └── zsh/                                    # source 配置，不作为独立程序执行

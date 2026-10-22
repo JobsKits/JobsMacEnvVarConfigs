@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# 仅由 run.zsh 启动的离线 HTTP 代理夹具：监听 loopback，转给临时仓库的 Git CGI。
+# 由 integration.zsh 启动的离线 HTTP 代理夹具：监听 loopback，转给临时仓库的 Git CGI。
 # 它不转发公网请求、不读取用户代理配置，端口和请求记录只写测试临时目录。
 use strict;
 use warnings;
