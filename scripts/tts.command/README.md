@@ -1,4 +1,4 @@
-# <span id="前言">`tts.command`</span>
+# `tts.command`
 
 ![Jobs出品，必属精品](https://picsum.photos/1500/400)
 
@@ -7,7 +7,7 @@
 <details>
 <summary>📚 目录（点击展开 / 收起）</summary>
 
-- [🔥 前言](#jobs-toc-heading-1)
+- [🔥 前言](#%E5%89%8D%E8%A8%80)
 - [一、推荐策略](#jobs-toc-heading-2)
 - [二、通过 list 菜单运行](#jobs-toc-heading-3)
 - [三、通过终端短命令运行](#jobs-toc-heading-4)
@@ -35,9 +35,9 @@
 > **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；脚本可单文件复制运行，不需要旁边的支持目录。终端自述确认后执行 `brew update` 更新本体及公式索引；只在指定公式 `python@3.12` 缺失、损坏或版本不满足 `3.10–3.12`（排除 `3.13+`） 时安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
 > 三个语音引擎均使用兼容的 Homebrew Python 3.12；已有虚拟环境先检查版本与健康状态，旧环境需修复时完整改名备份后重建，再补齐对应引擎依赖。
 
-## <span id="jobs-toc-heading-1" data-jobs-toc="v2"><span id="前言">🔥 前言</span></span><!-- jobs-toc:heading-end -->
+## <span id="前言">🔥 前言</span>
 
-这个脚本现在是增强型本地 TTS 入口：
+这个脚本提供多个本地 TTS 引擎入口：
 
 ```text
 list / tts

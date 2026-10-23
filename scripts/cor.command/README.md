@@ -22,12 +22,11 @@
 
 - 采用 Shell 脚本的原因：Shell 来自 [**macOS**](https://www.apple.com/macos/) 原生系统底层，虽然写法相对繁琐冗杂，但执行效率高，并且不需要额外介入 [**Ruby**](https://www.ruby-lang.org)、[**Python**](https://www.python.org) 等第三方运行环境，因此具备更好的移植性。
 
-
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 转换 HEX / RGB / RGBA / `0xAARRGGBB` 等颜色格式，并在 macOS 终端输出真实色块预览。
 
-本版重点修复：macOS 自带 Terminal.app 经常不设置 `COLORTERM=truecolor`，旧逻辑会误判终端不支持 24-bit True Color，导致色块显示不准确或看起来没有正常显示。现在对 Terminal.app、iTerm2、VS Code 终端、WezTerm 默认启用 24-bit ANSI 色彩输出。
+Terminal.app、iTerm2、VS Code 终端和 WezTerm 默认使用 24-bit ANSI 色彩输出；其它终端根据 `COLORTERM` / `TERM` 判断能力，必要时使用兼容色彩预览。输出包含颜色各通道及格式转换结果，透明度参与数值转换，色块按 RGB 原色显示。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、支持输入 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 

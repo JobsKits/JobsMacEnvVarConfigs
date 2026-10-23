@@ -21,10 +21,15 @@
 
 - 采用 Shell 脚本的原因：Shell 来自 [**macOS**](https://www.apple.com/macos/) 原生系统底层，虽然写法相对繁琐冗杂，但执行效率高，并且不需要额外介入 [**Ruby**](https://www.ruby-lang.org)、[**Python**](https://www.python.org) 等第三方运行环境，因此具备更好的移植性。
 
-
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 执行 Flutter iOS release 构建，并打开输出目录。
+
+- 先自动调用 `buildCheck -y`，按其默认规则清理工程、获取依赖并执行 doctor。
+- 校验当前目录的 `lib/` 和 `pubspec.yaml`；不是工程时循环询问路径，输入 `q` 取消。
+- 使用项目 Flutter 路由执行 `build ipa --release`，成功后打开工程 `build/ios/ipa/`。
+- 需要 macOS、完整 Xcode、可用的 Flutter 和工程已有的签名 / 导出配置；此入口不生成证书、不提供签名选择菜单，也没有 flavor 或任意构建参数解析。
+- 清理会影响现有构建缓存，依赖准备可能联网。命令失败时保留非零结果，不把仅有目录当作 IPA 已成功生成。
 
 该脚本适合 `.command` 双击运行，也可以在终端中执行。启动后的说明展示、依赖检查和核心流程都写在脚本内部。
 
@@ -38,7 +43,6 @@
 
 ```zsh
 ipa
-ipa [参数...]
 ```
 
 ## <span id="jobs-toc-heading-4" data-jobs-toc="v2">三、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->

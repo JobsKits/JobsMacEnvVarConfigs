@@ -48,6 +48,10 @@
     "scripts/tts.command/README.md",
     "scripts/update.command/README.md",
     "scripts/x.command/README.md",
-    "scripts/zz.command/README.md"
+    "scripts/zz.command/README.md",
+    "scripts/【MacOS】⚙️配置全局Markdown目录过滤器.command/README.md",
+    "Sys/README.md",
+    "scripts/_lib/README.md",
+    "zsh/README.md"
   ]
 }

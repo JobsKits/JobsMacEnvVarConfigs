@@ -48,4 +48,8 @@
 "/scripts/update.command/README.md" filter=jobs-markdown-toc
 "/scripts/x.command/README.md" filter=jobs-markdown-toc
 "/scripts/zz.command/README.md" filter=jobs-markdown-toc
+"/scripts/【MacOS】⚙️配置全局Markdown目录过滤器.command/README.md" filter=jobs-markdown-toc
+"/Sys/README.md" filter=jobs-markdown-toc
+"/scripts/_lib/README.md" filter=jobs-markdown-toc
+"/zsh/README.md" filter=jobs-markdown-toc
 # jobs-markdown-toc:end

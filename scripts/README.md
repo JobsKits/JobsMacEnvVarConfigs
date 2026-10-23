@@ -30,8 +30,48 @@
 | [`runtime_init.command/`](./runtime_init.command/README.md) | 用户终端的运行环境初始化。 |
 | [`i.command/`](./i.command/README.md) | 新旧 Xcode 模拟器启动入口。 |
 | [`simios.command/`](./simios.command/README.md) | 检查 Xcode 并按独立确认流程补齐 iOS 运行时。 |
-| `_lib/` | 被各入口加载的私有实现，包括会话、Flutter、路径及 Git 网络策略。 |
-| 其它 `<命令>.command/` | 同名命令与配套 README；完整用途及执行流程见[仓库入口说明](../README.md)。 |
+| [`【MacOS】⚙️配置全局Markdown目录过滤器.command/`](./【MacOS】⚙️配置全局Markdown目录过滤器.command/README.md) | 独立安装用户级 Git 目录过滤器；完整脚本包可复制运行，不在环境同步时自动安装过滤器。 |
+| [`a.command/`](./a.command/README.md) | 用系统关联应用打开 bash 登录配置。 |
+| [`b.command/`](./b.command/README.md) | 用系统关联应用打开 zsh 配置。 |
+| [`save.command/`](./save.command/README.md) | 重新加载 bash / zsh 常用配置；当前会话生效需使用已注册函数。 |
+| [`rb.command/`](./rb.command/README.md) | 以登录模式重启 Shell；函数调用可替换当前终端 Shell。 |
+| [`shell.command/`](./shell.command/README.md) | 扫描本机可用 Shell，菜单选择后用 `chsh` 设置默认登录 Shell。 |
+| [`x.command/`](./x.command/README.md) | 给所选文件增加执行权限并立即运行。 |
+| [`zz.command/`](./zz.command/README.md) | 解析 Finder 替身 / 软链接 / 拖入路径，进入目标目录或文件的父目录。 |
+| [`config.command/`](./config.command/README.md) | 用 Xcode 或文本编辑器打开默认或指定配置文件。 |
+| [`code.command/`](./code.command/README.md) | 查找已有 VS Code 官方 CLI，并转交打开参数。 |
+| [`d.command/`](./d.command/README.md) | 选择并进入 Flutter 工程目录。 |
+| [`check1.command/`](./check1.command/README.md) | 显示 Dart、FVM、Flutter 路径与版本，排查命令路由。 |
+| [`check.command/`](./check.command/README.md) | 按目标项目的 FVM 配置运行 Flutter doctor。 |
+| [`c.command/`](./c.command/README.md) | 在目标 Flutter 工程锁定 JDK 17 并执行清理 / 检查。 |
+| [`buildCheck.command/`](./buildCheck.command/README.md) | 构建前准备：清理工程、获取依赖并检查工具链。 |
+| [`apk.command/`](./apk.command/README.md) | 检查 Flutter / FVM / JDK 17，构建 Android release APK 并打开产物目录。 |
+| [`ipa.command/`](./ipa.command/README.md) | 检查 Flutter 环境，构建 iOS release 产物并打开输出目录；签名依赖工程配置。 |
+| [`fixfvm.command/`](./fixfvm.command/README.md) | 重新激活 Dart 全局 FVM，处理 Dart SDK 内核版本不匹配。 |
+| [`flutter_project.command/`](./flutter_project.command/README.md) | 按项目路由 Flutter / Dart 的 source 函数模块；优先项目 FVM。 |
+| [`install_jdk17.command/`](./install_jdk17.command/README.md) | 检测 JDK 17，按 Temurin、Zulu、OpenJDK 候选安装并复检。 |
+| [`install.command/`](./install.command/README.md) | 通过分类多选菜单安装所选开发依赖；不同于上一层的环境配置同步入口。 |
+| [`update.command/`](./update.command/README.md) | 按项维护开发工具、语言运行时和依赖；支持逐项确认及无人值守模式。 |
+| [`pods.command/`](./pods.command/README.md) | 选择本地 Pod / podspec，在独立检查环境运行 `pod lib lint`。 |
+| [`repair_gem_extensions.command/`](./repair_gem_extensions.command/README.md) | 默认检查缺失的 Ruby 原生扩展；显式修复时备份、重建、验证，失败恢复。 |
+| [`codemap.command/`](./codemap.command/README.md) | 为当前或一个 / 多个指定目录构建 CodeGraph 索引，支持拖入路径。 |
+| [`clean.command/`](./clean.command/README.md) | 清空 Shell 历史，处理失效 App 图标并执行其约定的本机清理。 |
+| [`clr.command/`](./clr.command/README.md) | 借助本地 Chrome 扩展清空下载记录，保留已下载文件。 |
+| [`dq.command/`](./dq.command/README.md) | 仅移除所选目标的 quarantine 标记；支持预览与处理后打开。 |
+| [`df.command/`](./df.command/README.md) | 以 dufs + Caddy 共享所选目录，支持只读 / 读写、认证与访问地址配置。 |
+| [`download.command/`](./download.command/README.md) | 以 yt-dlp 下载媒体，可使用浏览器 Cookies；已配置 API 时支持 cobalt 后端。 |
+| [`to.command/`](./to.command/README.md) | FFmpeg 视频 / 音频格式转换；格式短命令复用此入口，目标重名时保留原文件。 |
+| [`gif.command/`](./gif.command/README.md) | 录制终端或全屏，输出 GIF / MP4；支持对已有录制重新生成产物。 |
+| [`m5c.command/`](./m5c.command/README.md) | 读取两个文件的 MD5 摘要并比较，不修改输入。 |
+| [`flat.command/`](./flat.command/README.md) | 参数或交互方式做 URL 百分号解码，支持 `--plus` 并复制结果。 |
+| [`decode.command/`](./decode.command/README.md) | 循环输入 URL 编码文本，解码后显示并复制，输入 `q` 退出。 |
+| [`cor.command/`](./cor.command/README.md) | HEX / RGB / RGBA / ARGB 互转，输出通道数值和终端色块。 |
+| [`ts.command/`](./ts.command/README.md) | 识别秒 / 毫秒 / 微秒 / 纳秒时间戳，按所选时区输出日期、星期和偏移。 |
+| [`trs.command/`](./trs.command/README.md) | macOS 原生文本翻译；可切换方向与对方语言，单个空格进入设置。 |
+| [`tts.command/`](./tts.command/README.md) | 选择 MOSS-TTS-Nano / VoxCPM2 / Supertonic，准备模型、合成和播放语音。 |
+| [`_lib/`](./_lib/README.md) | 被入口 source 的会话、路径、Flutter 实现，以及 Git 动态网络策略。 |
+
+表中每项链接进入该功能的输入、参数、运行步骤和影响范围。短命令需要先通过[环境安装入口](../install.command/README.md)部署；直接运行源码中的命令包时，其私有库、资源和相邻依赖仍须保持完整。`entrypoints`、`runtime_init` 与 `flutter_project` 是 source 模块，不按独立程序双击运行。
 
 ### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[i.command](./i.command/i.command)</span><!-- jobs-toc:heading-end -->
 

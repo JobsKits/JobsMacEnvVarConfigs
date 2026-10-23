@@ -942,6 +942,18 @@ component_xcode_ios_platform() {
   fi
 }
 # ---------- 部件：Oh My Zsh ----------
+# 下载成功且语法有效才执行；保留现有 .zshrc，不改变登录 Shell。
+jobs_install_ohmyzsh() (
+  local installer=""
+  installer="$(mktemp "${TMPDIR:-/tmp}/jobs-ohmyzsh-install.XXXXXXXX")" || return 1
+  trap 'rm -f -- "$installer"' EXIT
+  curl --fail --show-error --silent --location --proto '=https' --proto-redir '=https' \
+    --connect-timeout 10 --max-time 120 --output "$installer" \
+    https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh || return 1
+  [[ -s "$installer" ]] || return 1
+  /bin/sh -n "$installer" || return 1
+  RUNZSH=no CHSH=no KEEP_ZSHRC=yes /bin/sh "$installer"
+)
 component_oh_my_zsh() {
   progress_step "Oh My Zsh"
 
@@ -962,9 +974,7 @@ component_oh_my_zsh() {
   fi
 
   if confirm_execute "未检测到 Oh My Zsh，是否安装？" "安装"; then
-    run_sh \
-      "安装 Oh My Zsh" \
-      'RUNZSH=no CHSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"'
+    run_cmd "安装 Oh My Zsh" jobs_install_ohmyzsh || return 1
     warn_echo "Oh My Zsh 官方安装流程可能有交互输出，这是正常现象。"
   fi
 }

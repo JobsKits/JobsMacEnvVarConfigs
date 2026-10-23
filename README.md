@@ -86,13 +86,9 @@
   - [repair\_gem\_extensions.command](#jobs-toc-heading-77)
   - [cocoapods\_network\_tests.zsh](#jobs-toc-heading-78)
   - [update\_integration\_test.zsh](#jobs-toc-heading-79)
-- [启动提示修复](#jobs-toc-heading-80)
-- [2026-05-12 修复说明：Scripts 模块化加载](#jobs-toc-heading-81)
-- [Scripts 模块加载说明](#jobs-toc-heading-82)
-- [list 菜单入口调整说明](#jobs-toc-heading-83)
-- [JobsMacEnv 自定义命令收口规则](#jobs-toc-heading-84)
-- [2026-05-17 新增说明：FFmpeg 通用媒体格式转换](#jobs-toc-heading-85)
-- [clr：清空 Chrome 下载历史](#jobs-toc-heading-86)
+- [十三、启动提示与模块加载](#jobs-toc-heading-80)
+- [十四、命令菜单与媒体转换](#jobs-toc-heading-81)
+- [十五、clr：清空 Chrome 下载历史](#jobs-toc-heading-82)
 
 </details>
 <!-- jobs-toc:end -->
@@ -102,8 +98,20 @@
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
 - 这是一个面向 **MacOS** 的个人开发环境配置同步项目。
-
 - 它把零散堆在 `~/.zshrc`、`~/.bash_profile` 里的环境变量、PATH、别名和个人命令拆分成模块，并通过 `install.command` 同步到用户目录 `~/.JobsMacEnv`。
+
+| 功能类别 | 具体能力与入口 |
+| --- | --- |
+| 环境部署与工具维护 | [环境同步](./install.command/README.md)部署配置和短命令；[install](./scripts/install.command/README.md)多选安装依赖；[update](./scripts/update.command/README.md)按项更新或无人值守维护 |
+| 配置与会话 | `a` / `b` / `config` 打开配置，`save` 重载，`rb` 重启 Shell，`shell` 选择登录 Shell，`list` 搜索并执行功能 |
+| Flutter / iOS 工程 | 项目目录选择、FVM 路由与诊断、JDK 17、构建前检查、APK / iOS 构建、模拟器运行时、本地 Pod 自检、Gem 原生扩展检查与修复 |
+| 文件与本机处理 | `zz` 解析替身与软链接，`x` 授权并执行文件，`m5c` 比较摘要，`dq` 处理所选目标隔离标记，`clean` 清理历史与约定的本机缓存 |
+| 媒体 | `download` 下载，`to` 及格式短命令转换，`gif` 录制终端 / 屏幕并生成媒体 |
+| 文本与语音 | `flat` / `decode` URL 解码，`cor` 颜色互转及色块，`ts` 时间戳与时区，`trs` 系统翻译，`tts` 本地语音引擎选择、合成与播放 |
+| 目录共享与浏览器 | `df` 使用 dufs + Caddy 临时共享目录；`clr` 通过本地 Chrome 扩展清空下载记录并保留下载文件 |
+| 开发索引与文档 | `codemap` 构建代码地图；独立 Markdown 过滤器维护本地目录标签与远端折叠目录 |
+
+每个命令的功能、输入输出和独立 README 均在 [scripts 功能目录](./scripts/README.md)逐项列出；本页的[脚本流程](#repository-script-flows)说明关键执行步骤。命令名相近不代表作用相同，例如 `clean` 清理 Shell 历史及约定对象，`clr` 只清浏览器下载记录。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、适合解决什么问题 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -112,8 +120,8 @@
 - 统一管理 **Java**、**Android**、**Flutter**、**Node**、**Rust**、**Python**、**Ruby**、**Go** 等开发环境入口。
 - 让系统级 `~/.zshrc` 保持轻量，只负责加载 `~/.JobsMacEnv`。
 - 支持本机私有配置和公共配置分离。
-
 - `codemap`：为当前目录或手工输入、拖入的一个或多个目录构建 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图，详见 [使用说明](./scripts/codemap.command/README.md)。配置同步会注册此命令；引擎由独立安装器安装。
+- [全局 Markdown 目录过滤器](./scripts/【MacOS】⚙️配置全局Markdown目录过滤器.command/README.md)：每台电脑一次，统一配置本地 `[toc]` 与暂存 / 远端折叠目录的双向转换。功能、入口、测试和转换副本均在本仓脚本包中；环境同步只复制脚本包，不自动写入 Git 配置。JobsGenesis 下载入口先完成递归拉取，再单独询问：回车才安装，输入任意字符后回车跳过；附加配置失败不影响拉取结果。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、目录结构 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -154,6 +162,12 @@
 │   │   ├── code.command            # VS Code 命令行入口包装脚本
 │   ├── codemap.command/
 │   │   ├── codemap.command         # 当前目录或指定目录的 .codegraph 构建入口
+│   │   └── README.md
+│   ├── 【MacOS】⚙️配置全局Markdown目录过滤器.command/
+│   │   ├── 【MacOS】⚙️配置全局Markdown目录过滤器.command
+│   │   ├── GlobalMarkdownToc.mjs   # 全局安装、状态、显式目标恢复与卸载
+│   │   ├── MarkdownToc.mjs         # 独立转换副本，不依赖源仓库位置
+│   │   ├── GlobalMarkdownToc.Tests.mjs
 │   │   └── README.md
 │   ├── pods.command/
 │   │   ├── pods.command            # 本地 CocoaPods Pod 编译 / podspec lint 自检入口
@@ -433,8 +447,6 @@ local.zsh
 ```
 
 也就是说，`shell_behavior.zsh` 放终端默认行为，`git_behavior.zsh` 放 Git 中文路径 / emoji 路径显示修正和推送网络入口挂载，`path_drag_resolver.zsh` 放路径拖入解析，`local.zsh` 只加载 `Scripts/<脚本全名>/<脚本全名>` 模块，并兼容旧版平铺结构 `Scripts/*.command`。
-
-
 
 #### <span id="jobs-toc-heading-14" data-jobs-toc="v2">3.0 `list`：功能菜单总入口 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -972,7 +984,6 @@ translate-cli
 8. 需要切换语言、方向或退出翻译时，只输入一个空格再回车，打开设置菜单。
 ```
 
-
 #### <span id="jobs-toc-heading-29" data-jobs-toc="v2">3.12 `gif`：终端 / 全屏录制并转为高质量 GIF / MP4 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 来源文件：
@@ -1058,7 +1069,6 @@ Ctrl-C
 不建议输入 `exit`。你手动输入的字符本来就是录屏内容，必然有机会进入 GIF。
 
 不再使用 `Ctrl-G` 作为结束键：你的终端环境已经把 `Ctrl-G` 分配给 Finder 拖入路径解析，继续复用会触发“最后一个参数不是有效路径”。
-
 
 #### <span id="jobs-toc-heading-30" data-jobs-toc="v2">3.13 `simios`：Xcode iOS Simulator Runtime 下载 / 补齐 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -1219,7 +1229,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
     └── custom/                             # 本地设置、Git、拖入路径与 Shell 行为
 ```
 
-这里展示当前检出源码：目录名为小写 `scripts/`；前文安装树中的大写 `~/.JobsMacEnv/Scripts/` 是部署后的运行目录。`Sys/`、`zsh/`、三个 source 模块及 `_lib/` 由安装和启动流程载入，不单独套用可执行脚本流程。下章分别概述本仓 41 个 `.command` 入口和 2 个可独立运行的隔离回归脚本。
+这里展示当前检出源码：目录名为小写 `scripts/`；前文安装树中的大写 `Scripts/` 是用户环境中的部署目录。功能包和逐项入口见 [scripts/README.md](./scripts/README.md)，启动文件模板见 [Sys/README.md](./Sys/README.md)，配置加载顺序见 [zsh/README.md](./zsh/README.md)，私有函数边界见 [_lib/README.md](./scripts/_lib/README.md)。这些配置及 source 模块由安装和启动流程载入。下章概述本仓实际入口与隔离回归脚本。
 
 ## 十二、<span id="repository-script-flows">本仓脚本流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -1622,24 +1632,12 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 验证修复顺序、错误传播、独立交互、颜色输出及终端条件。
 * 汇总断言，失败时返回非零状态，并清理本次临时资源。
 
-<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
+## <span id="jobs-toc-heading-80" data-jobs-toc="v2">十三、启动提示与模块加载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-
-## <span id="jobs-toc-heading-80" data-jobs-toc="v2">启动提示修复 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
-
-如果打开终端看到类似 `JobsMacEnv: 缺少模块` 的提示，说明系统里的 `~/.zshrc` 已经切到新版 `Scripts` 模块加载器，但 `~/.JobsMacEnv/Scripts` 目录还没有成功同步。
-
-请直接执行安装脚本，不要在路径前面多输入字符：
+如果打开终端看到类似 `JobsMacEnv: Scripts 目录不存在` 或 `入口脚本缺失` 的提示，先检查用户环境中的 `Scripts/` 是否完整，再从本仓重新执行安装同步入口：
 
 ```zsh
-./install.command/install.command
-```
-
-如果提示权限不足，先执行：
-
-```zsh
-chmod +x ./install.command/install.command
-./install.command/install.command
+zsh ./install.command/install.command
 ```
 
 安装完成后重新打开终端，或者执行：
@@ -1648,56 +1646,23 @@ chmod +x ./install.command/install.command
 source ~/.zshrc
 ```
 
-## <span id="jobs-toc-heading-81" data-jobs-toc="v2">2026-05-12 修复说明：Scripts 模块化加载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+- `zsh/custom/local.zsh` 按顺序加载 `runtime_init.command` 与 `entrypoints.command`。前者初始化已存在的 jenv / rbenv 和 Dart 补全，后者注册短命令。
+- 标准运行路径为用户环境中的 `Scripts/<脚本全名>/<脚本全名>`；短命令解析器也接受 `Scripts/<脚本全名>` 的平铺文件。源码目录小写 `scripts/` 不等于用户运行目录。
+- `d`、`zz`、`save`、`rb` 等命令通过当前 Shell 的函数包装执行，目录切换或重载才会影响当前终端；单独启动子进程不能反向修改父 Shell。
+- `flutter_project.command` 是函数模块；是否加载由 `USE_FVM` 控制，不生成独立 `flutter` 可执行包装。`install_jdk17.command` 可直接运行，不生成名为 `jdk17` 的短命令。
+- `clean` 的历史清理、失效 App 图标处理和 Homebrew 清理范围见其[独立说明](./scripts/clean.command/README.md)。运行自述内置于各脚本，README 不参与运行时加载。
 
-本版修复 `local.zsh` 模块化拆分后启动提示 `Scripts 模块未安装完整` 的问题：
+## <span id="jobs-toc-heading-81" data-jobs-toc="v2">十四、命令菜单与媒体转换 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-- `local.zsh` 只负责加载 `Scripts/<脚本全名>/<脚本全名>`，并兼容旧版平铺结构 `Scripts/*.command`
-- `Scripts` 下的功能模块已重新按“脚本全名文件夹 + 脚本 + README.md”拆分
-- 启动时优先使用 `~/.JobsMacEnv/Scripts`
-- 旧版 `~/.JobsMacEnv/scripts` 仅作为兼容兜底
-- `clean` 仍会在检测到 Homebrew 时顺手执行 `brew cleanup`
+`list` 是可搜索的命令总菜单。展示内置自述并确认后进入 [**fzf**](https://github.com/junegunn/fzf)；`--plain` / `-p` 直接显示文字清单，依赖不可用或跳过安装时也回退为清单。菜单选择后执行相应功能，结束后可返回继续选择。完整入口见 [scripts/README.md](./scripts/README.md)，菜单参数和键位见 [list 说明](./scripts/list.command/README.md)。
 
-
-## <span id="jobs-toc-heading-82" data-jobs-toc="v2">Scripts 模块加载说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
-
-新版统一使用 `~/.JobsMacEnv/Scripts` 作为模块目录，`zsh/custom/local.zsh` 只负责加载模块。模块标准路径为 `Scripts/<脚本全名>/<脚本全名>`。安装脚本会在同步完成后执行模块自检；如果打开终端出现模块缺失提示，请重新执行：
-
-```zsh
-cd .
-chmod +x install.command/install.command
-./install.command/install.command
-source ~/.zshrc
-```
-
-> 说明：脚本运行时展示的自述已内置在 `.command` 脚本中，不读取本 README.md；本文件仅用于仓库/文件夹阅读。
-
-## <span id="jobs-toc-heading-83" data-jobs-toc="v2">list 菜单入口调整说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
-
-`list` 现在作为 JobsMacEnv 自定义命令总菜单，不再打印长篇自述，也不再等待用户先按回车确认。运行后会直接使用 `fzf` 展示自定义命令和含义；如果 `fzf` 不可用，则退化为文本清单。
-
-当前纳入菜单的功能入口包括：`m5c`、`flat`、`trs`、`gif`、`install_jdk17.command`、`simios`、`cor`、`decode`、`ts`、`download`、`code`、`install`、`update`、`shell`、`zz`、`x`、`save`、`rb`、`a`、`b`、`i`、`flutter_project.command`、`fixfvm`、`check1`、`check`、`c`、`d`、`buildCheck`、`apk`、`ipa`、`config`。
-
-
-## <span id="jobs-toc-heading-84" data-jobs-toc="v2">JobsMacEnv 自定义命令收口规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
-
-- 以终端输入窗口为准：大部分用户可输入、且不是系统原生命令的自定义命令，独立放入 `Scripts/<命令>.command/<命令>.command`；`flutter_project.command` 保持原版函数模块位置，不生成 `~/.local/bin/flutter`（`USE_FVM=true` 时由 `env.zsh` 自动加载）；`install_jdk17.command` 保持原版脚本位置，不生成 `~/.local/bin/jdk17`。
-- 每个命令目录必须有同级 `README.md`。
-- 运行时展示的自述必须写在脚本内部，不读取同级 `README.md`。
-- `list` 是菜单入口，菜单中不显示 `list` 自己，其它自定义命令都应显示。
-- `zsh/custom` 只保留加载器和交互行为；具体实现仍放在 Scripts 模块或 Scripts 私有库。
-
-## <span id="jobs-toc-heading-85" data-jobs-toc="v2">2026-05-17 新增说明：FFmpeg 通用媒体格式转换 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
-
-新增 `Scripts/to.command/to.command`，用于统一处理 `to mp4 文件`、`mp4 文件`、`mov 文件`、`webm 文件`、`mp3 文件` 等媒体格式转换。真实脚本只维护一份，格式短命令通过入口包装复用，避免为每种格式复制独立脚本。
-
-`list` 的 [**fzf**](https://github.com/junegunn/fzf) 菜单已拆分展示这些格式入口：`to`、`mp4`、`mov`、`webm`、`mkv`、`avi`、`m4v`、`mp3`、`m4a`、`aac`、`wav`、`flac`、`ogg`、`opus`、`to gif`。选择 `mp4` 时等价于执行 `to mp4`，随后继续拖入或输入源文件路径。
+媒体转换统一由 [to.command](./scripts/to.command/README.md) 处理。`to mp4 文件`、`mp4 文件`、`mov 文件`、`webm 文件`、`mp3 文件` 等入口共用同一实现。菜单分别提供 `to`、`mp4`、`mov`、`webm`、`mkv`、`avi`、`m4v`、`mp3`、`m4a`、`aac`、`wav`、`flac`、`ogg`、`opus`、`to gif`；选择格式后继续拖入或输入来源路径。输出保存在源目录，同名目标增加后缀，具体参数、跳过和失败处理见独立说明。
 
 ---
 
-## <span id="jobs-toc-heading-86" data-jobs-toc="v2">clr：清空 Chrome 下载历史 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-82" data-jobs-toc="v2">十五、clr：清空 Chrome 下载历史 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-新增命令：
+运行命令：
 
 ```zsh
 clr
@@ -1712,3 +1677,7 @@ clr --install-extension
 ```
 
 原因：Chrome 没有给普通 macOS 命令行提供稳定的清空下载历史接口；本工具通过本地 Chrome 扩展调用 Chrome downloads API 完成清理。
+
+扩展部署、命令参数和排查方法见 [clr 功能说明](./scripts/clr.command/README.md)，扩展本身的加载与权限说明见 [chrome-extension/README.md](./scripts/clr.command/chrome-extension/README.md)。
+
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

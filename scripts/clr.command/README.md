@@ -28,7 +28,6 @@
 
 - 脚本入口使用 macOS 原生 Shell；其中的解析、转换或服务功能需要下述已验证的 Python 运行时。
 
-
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 清空 Google Chrome 浏览器下载历史，不删除已经下载到本地的真实文件。
@@ -58,8 +57,6 @@ clr --extension-id 扩展卡片里显示的32位ID
 ```
 
 不要继续硬写旧截图里的 `bceffimgdjebjemfhcfkombngddhmdee`；除非 Chrome 扩展页明确显示这个 ID 仍然存在且已启用。
-
-
 
 ## <span id="jobs-toc-heading-6" data-jobs-toc="v2">v8 修正 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 

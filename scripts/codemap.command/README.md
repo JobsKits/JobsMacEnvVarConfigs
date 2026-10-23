@@ -92,11 +92,8 @@ codemap "./项目 A" "./项目 B"
 日志写入系统临时目录中的 `codemap.log`，每次确认运行后重新初始化。终端和日志同步保留目标路径、实际命令、CodeGraph 输出、官方 JSON、失败原因及汇总；非彩色终端输出纯文本。
 
 - 提示依赖不可用：运行[独立安装器](../../../../JobsCommand@iOS/配置相关/【MacOS】⚙️安装代码地图CodeGraph.command/README.md)，按健康体检结果修复。
-
 - 提示路径不存在：确认拖入的是目录；手工输入含空格路径时使用引号；多个目录分别作为参数传入。
-
 - 提示索引未完成：查看日志中的 CodeGraph 错误，排查目录权限和工具状态后重新运行同一个目标。
-
 - 单个目标失败：其余目标仍会处理；终端退出码非零，不能把部分成功当成全部完成。
 
 ## 六、<span id="validation">验证范围</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
