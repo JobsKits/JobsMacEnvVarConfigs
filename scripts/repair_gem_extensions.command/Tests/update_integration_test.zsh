@@ -16,6 +16,7 @@ MOCK_POD_PRESENT=1
 MOCK_WORKER_FAILURE_AT=0
 MOCK_WORKER_EXIT=23
 PTY_CAPTURE=''
+TEST_ACTUAL_RUN_CMD=''
 
 # 说明所有真实包管理器均不会进入被测执行链。
 show_test_intro() {
@@ -72,9 +73,16 @@ initialize_tests() {
   zmodload zsh/zpty || return 1
   TEST_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/jobs-gemext-integration.XXXXXXXX")" || return 1
   export TEST_ROOT
-  /bin/mkdir -p "$TEST_ROOT/bin" "$TEST_ROOT/gems" "$TEST_ROOT/runtime"
+  /bin/mkdir -p "$TEST_ROOT/bin" "$TEST_ROOT/gems" "$TEST_ROOT/runtime" "$TEST_ROOT/site-ruby"
+  /bin/cat > "$TEST_ROOT/bin/ruby" <<'MOCK_UPDATE_RUBY'
+#!/bin/zsh
+[[ "$*" == '--disable-gems -rrbconfig -e '* ]] || exit 93
+print -r -- "$TEST_ROOT/site-ruby"
+MOCK_UPDATE_RUBY
+  /bin/chmod +x "$TEST_ROOT/bin/ruby"
   export JOBS_MAC_ENV_SOURCE_MODE=1
   source "$UPDATE_SCRIPT" || return 1
+  TEST_ACTUAL_RUN_CMD="${functions[jobs_update_run_cmd]}"
 }
 # 将所有升级与刷新入口替换为无副作用记录器，worker 次数通过文件跨管道保存。
 install_update_mocks() {
@@ -96,6 +104,11 @@ install_update_mocks() {
     case "$*" in
       'list -i ^cocoapods$') return 0 ;;
       'env home') print -r -- "$TEST_ROOT/gems" ;;
+      env)
+        print -r -- "  - INSTALLATION DIRECTORY: $TEST_ROOT/gems"
+        print -r -- "  - EXECUTABLE DIRECTORY: $TEST_ROOT/bin"
+        print -r -- "  - RUBY EXECUTABLE: $TEST_ROOT/bin/ruby"
+        ;;
       update*) print -r -- "gem:$*" >> "$TEST_ROOT/events" ;;
       *) print -u2 -r -- "禁止的 gem 替身调用：$*"; return 91 ;;
     esac
@@ -148,7 +161,7 @@ test_update_sequence() {
   local result=0 expected=''
   reset_update_mock
   jobs_update_ruby_base > "$TEST_ROOT/output" 2>&1 || result=$?
-  expected=$'rbenv:init\nrbenv:rehash\nworker:repair:1\ngem:update --system\ngem:update\nworker:repair:2'
+  expected=$'rbenv:init\nrbenv:rehash\nworker:repair:1\ngem:update --system\ngem:update --no-user-install --install-dir '"$TEST_ROOT/gems --bindir $TEST_ROOT/bin"$'\nworker:repair:2'
   expect_equal 0 "$result" '健康 Ruby 阶段成功'
   expect_equal "$expected" "$(<"$TEST_ROOT/events")" 'rbenv、修复、升级、复检顺序'
   expect_equal 2 "$(<"$TEST_ROOT/worker-count")" '健康环境升级前后仍各扫描一次'
@@ -171,18 +184,31 @@ test_update_worker_failures() {
   jobs_update_repair_gem_extensions > "$TEST_ROOT/output" 2>&1 || result=$?
   expect_equal 23 "$result" '日志管道保留 worker 原退出码'
 }
-# 真实 tee 写入失败不能被 worker 的成功退出码覆盖。
+# 日志流写入失败不能被 worker 的成功退出码覆盖。
 test_update_tee_failures() {
   local result=0
   reset_update_mock
   print -r -- 'not a directory' > "$TEST_ROOT/blocked"
   LOG_FILE="$TEST_ROOT/blocked/update.log"
   jobs_update_repair_gem_extensions > "$TEST_ROOT/output" 2>&1 || result=$?
-  expect_equal 1 "$result" 'worker 成功但 tee 失败时返回失败'
+  expect_equal 1 "$(( result != 0 ))" 'worker 成功但日志写入失败时返回非零'
   MOCK_WORKER_FAILURE_AT=2
   result=0
   jobs_update_repair_gem_extensions > "$TEST_ROOT/output" 2>&1 || result=$?
-  expect_equal 23 "$result" 'worker 与 tee 同时失败时保留 worker 错误'
+  expect_equal 23 "$result" 'worker 与日志同时失败时保留 worker 错误'
+}
+# 独立调用与公共执行器调用都只将每条 worker 输出写入日志一次。
+test_worker_log_once() {
+  reset_update_mock
+  jobs_update_repair_gem_extensions > "$TEST_ROOT/output" 2>&1
+  expect_equal 1 "$(/usr/bin/grep -Fc 'MOCK_WORKER:repair:1' "$LOG_FILE")" '独立 worker 输出仅落盘一次'
+  (
+    reset_update_mock
+    functions[jobs_update_run_cmd]="$TEST_ACTUAL_RUN_CMD"
+    jobs_update_run_cmd '包装 worker' jobs_update_repair_gem_extensions > "$TEST_ROOT/output" 2>&1
+    /usr/bin/grep -Fc 'MOCK_WORKER:repair:1' "$LOG_FILE" > "$TEST_ROOT/log-count"
+  )
+  expect_equal 1 "$(< "$TEST_ROOT/log-count")" '公共执行器内 worker 输出仅落盘一次'
 }
 # CocoaPods 本体升级后先修扩展，再刷新 Specs；修复失败或无 pod 时阻止刷新。
 test_cocoapods_sequence() {
@@ -190,7 +216,7 @@ test_cocoapods_sequence() {
   reset_update_mock
   jobs_update_gem_cocoapods > "$TEST_ROOT/output" 2>&1 || result=$?
   expect_equal 0 "$result" 'CocoaPods 升级与复检成功'
-  expect_equal $'gem:update cocoapods\nworker:repair:1\nrepos:refresh' "$(<"$TEST_ROOT/events")" 'CocoaPods 工具升级、扩展复检、Specs 刷新顺序'
+  expect_equal "gem:update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin"$'\nworker:repair:1\nrepos:refresh' "$(<"$TEST_ROOT/events")" 'CocoaPods 工具升级、扩展复检、Specs 刷新顺序'
   reset_update_mock
   MOCK_WORKER_FAILURE_AT=1
   result=0
@@ -352,6 +378,7 @@ main() {
   test_update_sequence # 验证更新前后的扫描顺序。
   test_update_worker_failures # 验证构建失败传播。
   test_update_tee_failures # 验证日志失败传播。
+  test_worker_log_once # 验证独立和包装模式均不重复落盘。
   test_cocoapods_sequence # 验证工具升级和 Specs 之间的修复边界。
   test_embedded_copy # 验证单文件实现保持一致。
   prepare_standalone_fixtures # 准备无副作用独立入口和 TTY 驱动。

@@ -142,7 +142,13 @@ print -r -- "gem|${(j: :)@}" >> "$MOCK_ROOT/calls"
 case "$*" in
   'list -i ^cocoapods$') exit "${MOCK_GEM_INSTALLED_RESULT:-0}" ;;
   'env home') print -r -- "${MOCK_GEM_HOME:-$MOCK_ROOT/gems}" ;;
-  'update cocoapods') exit "${MOCK_GEM_UPDATE_RESULT:-0}" ;;
+  'env')
+    print -r -- "  - INSTALLATION DIRECTORY: ${MOCK_GEM_HOME:-$MOCK_ROOT/gems}"
+    print -r -- "  - EXECUTABLE DIRECTORY: $MOCK_ROOT/bin"
+    print -r -- "  - RUBY EXECUTABLE: $MOCK_ROOT/bin/ruby"
+    ;;
+  'env user_gemhome'|'env path') print -r -- "$MOCK_ROOT/usergems" ;;
+  'update cocoapods --no-user-install --install-dir '*) exit "${MOCK_GEM_UPDATE_RESULT:-0}" ;;
   *) exit 86 ;;
 esac
 MOCK_GEM
@@ -189,6 +195,10 @@ install_safe_wrappers() {
     shift 2
     "$@"
   }
+  function jobs_update_run_brew_update() {
+    print -r -- 'brew-index-refresh' >> "$MOCK_ROOT/calls"
+    return "${MOCK_BREW_INDEX_RESULT:-0}"
+  }
   function jobs_update_run_sudo_cmd() {
     print -r -- "sudo-wrapper|$1" >> "$MOCK_ROOT/calls"
     shift
@@ -203,7 +213,7 @@ reset_fixture() {
   export MOCK_CDN_MODE=valid MOCK_GIT_MODE=valid MOCK_CDN_TIME=1.0 MOCK_GIT_TIME=1.0
   export MOCK_CDN_DELAY=0 MOCK_GIT_DELAY=0 MOCK_PROBE_BARRIER=0 MOCK_GIT_PROTOCOL=valid
   export MOCK_POD_HANG=0 MOCK_POD_RESULT=0 MOCK_REPO_LIST_RESULT=0
-  export MOCK_BREW_PRESENT=1 MOCK_BREW_INSTALLED_RESULT=0 MOCK_BREW_UPGRADE_RESULT=0 MOCK_BREW_PREFIX="$TEST_ROOT"
+  export MOCK_BREW_PRESENT=1 MOCK_BREW_INSTALLED_RESULT=0 MOCK_BREW_UPGRADE_RESULT=0 MOCK_BREW_INDEX_RESULT=0 MOCK_BREW_PREFIX="$TEST_ROOT"
   export MOCK_GEM_PRESENT=1 MOCK_GEM_INSTALLED_RESULT=0 MOCK_GEM_UPDATE_RESULT=0 MOCK_GEM_HOME="$TEST_ROOT/gems"
   export MOCK_POD_PRESENT=1 MOCK_SPECS_RESULT=0 JOBS_SPECS_SOURCE=auto
   export JOBS_SPECS_PROBE_TIMEOUT=3 JOBS_SPECS_CONNECT_TIMEOUT=2 JOBS_SPECS_UPDATE_TIMEOUT=3
@@ -465,12 +475,25 @@ test_brew_failure() {
   assert_no_call 'gem|update' || return 1
   assert_call 'specs-refresh'
 }
+# 仅升级 CocoaPods 也要先刷新 Brew 索引；失败后仅继续独立 Specs 维护。
+test_brew_index_failure() {
+  stub_specs_refresh
+  export MOCK_BREW_INDEX_RESULT=1
+  local result=0
+  jobs_update_gem_cocoapods || result=$?
+  assert_equal 1 "$result" || return 1
+  assert_equal 0 "$JOBS_UPDATE_COCOAPODS_BREW_UPDATED" || return 1
+  assert_call 'brew-index-refresh' || return 1
+  assert_no_call 'brew|upgrade' || return 1
+  assert_no_call 'gem|update' || return 1
+  assert_call 'specs-refresh'
+}
 # 可写 gem home 内的 CocoaPods 使用普通 gem update。
 test_gem_managed() {
   stub_specs_refresh
   export MOCK_BREW_PRESENT=0
   jobs_update_gem_cocoapods || return 1
-  assert_call 'gem|update cocoapods' || return 1
+  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin" || return 1
   assert_no_call 'sudo-wrapper|' || return 1
   assert_no_call 'brew|'
 }
@@ -479,16 +502,22 @@ test_brew_other_formula_only() {
   stub_specs_refresh
   export MOCK_BREW_INSTALLED_RESULT=1
   jobs_update_gem_cocoapods || return 1
-  assert_call 'gem|update cocoapods' || return 1
+  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin" || return 1
   assert_no_call 'brew|upgrade'
 }
-# 不可写 gem home 必须进入已有提权包装器；测试包装器仍执行假 gem。
+# 权限不完整且用户目录无法安全确认时停止工具更新，不提权，独立规格源仍可维护。
 test_system_gem_managed() {
   stub_specs_refresh
-  export MOCK_BREW_PRESENT=0 MOCK_GEM_HOME="$TEST_ROOT/missing-gem-home"
-  jobs_update_gem_cocoapods || return 1
-  assert_call 'sudo-wrapper|更新系统 gem 包 cocoapods' || return 1
-  assert_call 'gem|update cocoapods'
+  export MOCK_BREW_PRESENT=0 MOCK_GEM_HOME="$TEST_ROOT/blocked-gem-home"
+  /bin/mkdir -p "$MOCK_GEM_HOME/plugins"
+  print -r -- 'fixture' > "$MOCK_GEM_HOME/plugins/rdoc_plugin.rb"
+  /bin/chmod 400 "$MOCK_GEM_HOME/plugins/rdoc_plugin.rb"
+  local result=0
+  jobs_update_gem_cocoapods || result=$?
+  assert_equal 1 "$result" || return 1
+  assert_no_call 'sudo-wrapper|' || return 1
+  assert_no_call 'gem|update' || return 1
+  assert_call 'specs-refresh'
 }
 # 未登记安装时不新装 CocoaPods，但已有 pod 仍可维护规格源。
 test_unregistered_pod() {
@@ -504,7 +533,7 @@ test_mixed_installations() {
   stub_specs_refresh
   export MOCK_BREW_PREFIX="$TEST_ROOT/runtime"
   jobs_update_gem_cocoapods || return 1
-  assert_call 'gem|update cocoapods' || return 1
+  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin" || return 1
   assert_no_call 'brew|upgrade' || return 1
   assert_equal 0 "$JOBS_UPDATE_COCOAPODS_BREW_UPDATED"
 }
@@ -599,9 +628,10 @@ run_network_cases() {
   run_case '跳过 formula 阶段已完成升级' test_brew_already_updated
   run_case '成功标记避免同轮重复升级' test_brew_success_marker
   run_case 'Brew 升级失败不混装 gem' test_brew_failure
+  run_case 'Brew 索引失败跳过本体且维护独立 Specs' test_brew_index_failure
   run_case '可写 gem home 升级' test_gem_managed
   run_case 'Brew 未登记 CocoaPods 回退 gem' test_brew_other_formula_only
-  run_case '系统 gem 进入已有提权包装器' test_system_gem_managed
+  run_case '不安全用户目录停止 Gem 升级且不提权' test_system_gem_managed
   run_case '未登记安装保留源维护' test_unregistered_pod
   run_case '混装优先升级活跃 gem' test_mixed_installations
   run_case '未知归属不升级本体' test_unknown_owner

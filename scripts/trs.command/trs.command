@@ -477,13 +477,20 @@ LANGS
 }
 # 收集并校验用户输入，决定后续执行路径。
 select_language() {
-  ensure_fzf
-
-  local selected=""
-  selected="$(language_rows | fzf --height=80% --border --prompt='选择对方语言 > ' --no-multi)" || return 1
-  CURRENT_OTHER_NAME="$(printf "%s" "${selected}" | awk -F '｜' '{print $2}')"
-  CURRENT_OTHER_CODE="$(printf "%s" "${selected}" | awk -F '｜' '{print $3}')"
-  [[ -n "${CURRENT_OTHER_CODE}" ]]
+  ensure_fzf || return 1
+  local selected="" picker_result=0
+  selected="$(language_rows |
+    FZF_DEFAULT_OPTS= FZF_DEFAULT_OPTS_FILE= fzf --height=80% --border \
+      --prompt='选择对方语言 > ' --no-multi --expect=left \
+      --header='回车确认，← 返回设置，Esc 取消设置并返回翻译')" || picker_result=$?
+  [[ "${selected%%$'\n'*}" == left ]] && return 10
+  (( picker_result == 0 )) || return "$picker_result"
+  [[ "$selected" == *$'\n'* ]] || return 130
+  selected="${selected#*$'\n'}"
+  [[ -n "$selected" ]] || return 130
+  CURRENT_OTHER_NAME="$(printf "%s" "$selected" | awk -F '｜' '{print $2}')"
+  CURRENT_OTHER_CODE="$(printf "%s" "$selected" | awk -F '｜' '{print $3}')"
+  [[ -n "$CURRENT_OTHER_CODE" ]]
 }
 # 封装 show_help 对应的独立处理逻辑。
 show_help() {
@@ -663,13 +670,14 @@ ensure_current_pair_ready() {
 }
 # 封装 change_language_interactive 对应的独立处理逻辑。
 change_language_interactive() {
-  if select_language; then
-    CURRENT_DIRECTION="to_zh"
-    save_config
-    log_ok "当前语言：${CURRENT_OTHER_NAME} / ${CURRENT_OTHER_CODE}"
-    log_ok "当前方向：$(direction_label)"
-    ensure_current_pair_ready || exit 1
-  fi
+  local picker_result=0
+  select_language || picker_result=$?
+  (( picker_result == 0 )) || return "$picker_result"
+  CURRENT_DIRECTION="to_zh"
+  save_config || return 1
+  log_ok "当前语言：${CURRENT_OTHER_NAME} / ${CURRENT_OTHER_CODE}"
+  log_ok "当前方向：$(direction_label)"
+  ensure_current_pair_ready || return 1
 }
 # 封装 swap_direction 对应的独立处理逻辑。
 swap_direction() {
@@ -708,45 +716,51 @@ translate_text() {
 }
 # 封装 settings_menu 对应的独立处理逻辑。
 settings_menu() {
-  ensure_fzf
-
-  local choice=""
-  choice="$(printf "%s\n" \
-    "返回翻译" \
-    "切换方向" \
-    "切换对方语言" \
-    "打开 Translation Languages 设置" \
-    "查看帮助" \
-    "退出翻译" \
-    | fzf --height=60% --border --prompt='设置 > ' --no-multi)" || return 0
-
-  case "${choice}" in
-    "返回翻译")
+  ensure_fzf || return 1
+  local choice="" picker_result=0 menu_cursor=1
+  while true; do
+    picker_result=0
+    choice="$(printf "%s\n" \
+      "返回翻译" "切换方向" "切换对方语言" \
+      "打开 Translation Languages 设置" "查看帮助" "退出翻译" |
+      FZF_DEFAULT_OPTS= FZF_DEFAULT_OPTS_FILE= fzf --height=60% --border \
+        --prompt='设置 > ' --no-multi --expect=left --sync \
+        --bind="start:pos($menu_cursor)" \
+        --header='回车确认，← / Esc 返回翻译')" || picker_result=$?
+    [[ "${choice%%$'\n'*}" == left ]] && return 0
+    if (( picker_result == 130 )); then
       return 0
-      ;;
-    "切换方向")
-      swap_direction
-      return 0
-      ;;
-    "切换对方语言")
-      change_language_interactive
-      return 0
-      ;;
-    "打开 Translation Languages 设置")
-      LAST_TRANSLATE_FROM="$(source_lang)"
-      LAST_TRANSLATE_TO="$(target_lang)"
-      open_translation_settings
-      return 0
-      ;;
-    "查看帮助")
-      show_help
-      pause
-      return 0
-      ;;
-    "退出翻译")
-      exit 0
-      ;;
-  esac
+    elif (( picker_result != 0 )); then
+      log_error "设置选择器失败（退出码 $picker_result）。"
+      return "$picker_result"
+    fi
+    [[ "$choice" == *$'\n'* ]] || return 0
+    choice="${choice#*$'\n'}"
+    case "$choice" in
+      "返回翻译"|'') return 0 ;;
+      "切换方向") swap_direction; return $? ;;
+      "切换对方语言")
+        menu_cursor=3
+        picker_result=0
+        change_language_interactive || picker_result=$?
+        if (( picker_result == 10 )); then
+          continue
+        elif (( picker_result == 130 )); then
+          return 0
+        fi
+        return "$picker_result"
+        ;;
+      "打开 Translation Languages 设置")
+        LAST_TRANSLATE_FROM="$(source_lang)"
+        LAST_TRANSLATE_TO="$(target_lang)"
+        open_translation_settings
+        return $?
+        ;;
+      "查看帮助") show_help; pause; return 0 ;;
+      "退出翻译") exit 0 ;;
+      *) log_error "无效的设置选项。"; return 1 ;;
+    esac
+  done
 }
 # 封装 trim_text 对应的独立处理逻辑。
 trim_text() {

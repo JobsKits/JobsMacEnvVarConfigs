@@ -22,14 +22,15 @@
 - [六、风险说明](#jobs-toc-heading-13)
 - [七、日志文件](#jobs-toc-heading-14)
 - [八、结构约定](#jobs-toc-heading-15)
-- [九、流程图](#jobs-toc-heading-16)
+  - [8.1、隔离回归与检查](#jobs-toc-heading-16)
+- [九、流程图](#jobs-toc-heading-17)
 
 </details>
 <!-- jobs-toc:end -->
 
 ---
 
-> **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；脚本可单文件复制运行，不需要旁边的支持目录。终端自述确认后执行 `brew update` 更新本体及公式索引；只在指定公式 `python@3.13` 缺失、损坏或版本不满足 `3.11+` 时安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
+> **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；脚本可单文件复制运行，不需要旁边的支持目录。普通终端模式选中该项后更新本体及公式索引，复用本轮已经成功的结果，不重复执行裸 `brew update`；索引失败则停止依赖它的升级。只在指定公式 `python@3.13` 缺失、损坏或版本不满足 `3.11+` 时经确认安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
 > 只有选中 Python 更新项后才执行内嵌预检；无人值守模式对内嵌环境层保持只读，缺失时停止该项，不借用系统 Python 绕过检查。原有其它升级项仍按自身选项运行。
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
@@ -69,7 +70,7 @@ update.command -t
 update.command --unattended
 ```
 
-无人值守模式会跳过脚本自述确认、自动执行所有更新项，并在 [**Homebrew**](https://brew.sh/) `Do you want to proceed with the upgrade? [y/n]` 这类已知确认点定点输入 `y`。Homebrew 下载会全局测量 IPv4 / IPv6 速度，按实测带宽设置低速阈值，运行中持续低速会自动换线；Homebrew 隐藏 curl 进度条时，脚本每 `20` 秒输出一次下载缓存增长心跳。脚本不会要求预先输入管理员密码，也不会保存或保活密码凭证。
+无人值守模式会跳过脚本自述确认、自动执行所有更新项，并在 [**Homebrew**](https://brew.sh/) `Do you want to proceed with the upgrade? [y/n]` 这类已知确认点定点输入 `y`。Homebrew 的 IPv4 / IPv6 测速仅决定 curl 尝试顺序，停滞保护使用 `1 B/s`，允许慢速下载继续；失败后有限重试。脚本每 `20` 秒输出下载缓存观察结果，增长只代表仍有传输，最终成败以该轮命令结果为准。脚本不会要求预先输入管理员密码，也不会保存或保活密码凭证。
 
 需要管理员权限的命令在无人值守模式下统一使用 `sudo -n`：如果当前已有可用的 sudo 缓存或精确的 `NOPASSWD` 授权，命令可以执行；否则立即失败并跳过该提权项，继续后续更新，绝不会卡在密码提示。脚本不会自动修改 `sudoers`。
 
@@ -82,7 +83,7 @@ update.command --unattended
 输入任意字符后回车：执行升级 / 刷新
 ```
 
-单个更新项失败不会阻断后续更新项，只会写入日志并继续后续流程。
+单个更新项失败不会阻断后续更新项。命令退出码、明确错误输出和必要的更新后核验共同决定结果；第三方返回 `0` 但输出明确失败时也不会标记完成。每组区分完成、部分执行、跳过和失败，最终列出未完成项；只要本次选择的任务有失败或明确跳过，脚本返回非零。用户在普通模式直接回车而未选择的任务不计入未完成。
 
 工具不存在时，`update.command` 默认只提示，不静默安装。需要补装请回到 `install.command`。
 
@@ -92,11 +93,12 @@ update.command --unattended
 -t
 --trust
 --unattended
+-h, --help  # 只显示参数说明，不初始化日志或运行更新。
 ```
 
 无人值守模式等价于逐项选择执行，并保证脚本自身不等待终端密码。它不等价于绕过外部工具的安全机制；系统弹窗、图形化授权、网络失败或第三方安装器的未知交互可能导致对应项失败，其余项仍会继续。
 
-脚本内置自述可通过环境变量跳过：
+扩展运行说明可通过环境变量跳过；首屏简明自述与普通模式的防误触确认仍保留：
 
 ```zsh
 JOBS_MAC_ENV_SKIP_README=1 ./update.command
@@ -111,20 +113,21 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
 - [**Xcode**](https://developer.apple.com/xcode/) iOS 平台组件
   - 对应更新：清理 Xcode / CoreSimulator 缓存，执行 `xcodebuild -downloadPlatform iOS -verbose`
 - [**Oh My Zsh**](https://ohmyz.sh/)
-  - 对应更新：执行 `~/.oh-my-zsh/tools/upgrade.sh`
+  - 对应更新：执行已有安装内的官方 `tools/upgrade.sh`，随后独立读取实际跟踪分支的远端提交，核验本地 HEAD 已包含它；远端不可达或本地落后时明确未完成，不受上游脚本成功横幅影响。使用当前 `ZSH` 目录，未设置时使用默认安装目录。
 - [**Homebrew**](https://brew.sh/)
   - 对应更新：执行 `brew update`、`brew upgrade`、`brew upgrade --cask`、`brew cleanup`、`brew doctor`、`brew -v`
   - 容错处理：`brew update` 遇到 `formulae.brew.sh/api` 或 `.jws.json` 下载失败时，自动使用 `HOMEBREW_NO_INSTALL_FROM_API=1 brew update` 降级重试
   - 信任处理：全局 `brew upgrade` 前会先处理脚本维护的第三方 tap，避免 Homebrew 扫描阶段提前跳过 `fvm` 等非官方 formula
   - 托管处理：`-t` 模式下会对 `brew upgrade` / `brew upgrade --cask` 的 `[y/n]` 确认自动输入 `y`
-  - 网络处理：`brew update`、全局 formula / cask 升级和逐项 formula / cask 升级统一复用 IPv4 / IPv6 自适应下载策略；动态低速阈值避免误杀慢线路，最终兜底仍保留停滞退出边界
+  - 网络处理：`brew update`、全局及逐项 formula / cask 升级、Python 必需公式准备和 CocoaPods 本体统一复用下载重试；索引按真实 Brew 路径在本轮缓存结果。更新索引失败时停止相应升级；升级失败时跳过 cleanup，保留已完成包与下载缓存。
   - `brew cask`：由 `BREW_CASKS` 自动生成逐项升级入口
   - `brew formula`：由 `BREW_FORMULAE` 自动生成逐项升级入口
   - `github-store`：升级前确认 `OpenHub-Store/tap`，升级后对 `$APPLICATIONS_DIR/GitHub-Store.app` 执行 `xattr -dr com.apple.quarantine`
 - [**Rosetta 2**](https://support.apple.com/en-us/102527)
   - 对应更新：检查安装状态；Rosetta 2 通常跟随 [**macOS**](https://www.apple.com/macos/) 系统更新维护
 - [**FVM**](https://fvm.app/) / [**Flutter**](https://flutter.dev/)
-  - 对应更新：FVM 复用统一的 `brew formula` 升级逻辑，先处理 `leoafarias/fvm` tap 信任与确认，再执行外部 `flutter upgrade` / `flutter doctor -v`；否则回退到 `fvm flutter doctor -v`
+  - 对应更新：FVM 工具复用统一的 `brew formula` 升级逻辑。Flutter 先解析真实 SDK；独立 SDK 和 FVM 频道缓存可执行 `upgrade`，失败后停止该 SDK 的隔离标记处理与 doctor；doctor 本身的错误会进入汇总。
+  - 固定版本：`fvm/default` 指向数字版本缓存时保留该版本，明确记录 SDK 升级跳过，避免原地修改被项目共享的固定 SDK。需要换版时先自行执行 `fvm install <新版本>`、`fvm global <新版本>`；参见 [FVM 官方说明](https://fvm.app/documentation/getting-started/faq)。
   - 隔离处理：`brew cask：flutter` 和 `flutter upgrade` 完成后，先验证 SDK 内 Dart 二进制文件的 `FLUTTER.IO LLC (S8QB4VV633)` 官方签名；仅在签名有效且签名方匹配时，定向解除 Flutter SDK 的 `com.apple.quarantine` 标记，避免 macOS 将可验证的 `dart` 误报为“已损坏”
 - [**Node.js**](https://nodejs.org/) / [**Corepack**](https://nodejs.org/api/corepack.html) / [**npm**](https://www.npmjs.com/) / [**pnpm**](https://pnpm.io/)
   - 对应更新：兼容 [**nvm**](https://github.com/nvm-sh/nvm) LTS 维护，启用 `corepack`，升级 `npm`
@@ -135,15 +138,16 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
 - `npm` 全局包：[**CodeGraph**](https://github.com/colbymchenry/codegraph)
   - 对应更新：检测已安装后执行 `npm install -g @colbymchenry/codegraph@latest`，输出版本，并执行 `codegraph install --yes` 刷新 Agent 配置
 - [**Ruby**](https://www.ruby-lang.org/) / [**RubyGems**](https://rubygems.org/) / [**rbenv**](https://github.com/rbenv/rbenv)
-  - 对应更新：刷新 `rbenv` 初始化配置，执行 `rbenv rehash`、`gem update --system`、`gem update`
+  - 对应更新：刷新 `rbenv` 初始化配置并 rehash。Homebrew / 系统 Ruby 的 RubyGems 本体由原包管理器维护，不执行 `gem update --system`；其它自管 Ruby 先检查实际目标权限。
+  - Gem 权限：从 `gem env` 获取当前 Ruby、安装目录及 bin，检查插件已有文件等实际写入位置。共享目录不完整可写时，只在用户 Gem 目录位于当前 HOME 内、可写且当前 Ruby 确认可加载时执行 `gem update --user-install`；更新后复检搜索路径，用户 bin 仅追加到本次进程 PATH，已有命令保持原来源优先。失败明确返回，不自动 sudo 或改所有权。参见 [RubyGems 安装说明](https://guides.rubygems.org/gem-installation-and-loading/)。
   - 原生扩展：更新前后检查当前 CocoaPods 所用 Ruby，仅对缺失的已安装扩展版本备份重建；健康版本直接跳过，详见 [原生扩展修复](#gem-native-extensions)。
 - [**CocoaPods**](https://cocoapods.org/) 工具与公共规格源
-  - 工具更新：按当前 PATH 中 `pod` 的实际路径判断是否由 Homebrew 管理，命中时沿用 Homebrew 自适应下载；本轮逐项 formula 阶段已成功升级则跳过重复升级。活跃命令不属于该 formula、但当前 RubyGems 已安装时，可写 Gem 目录直接执行 `gem update cocoapods`；其它目录沿用普通模式 `sudo` / 无人值守 `sudo -n` 策略。归属无法确认或工具未登记时只提示，不自动补装。
+  - 工具更新：按当前 PATH 中 `pod` 的实际路径判断是否由 Homebrew 管理，命中时先通过统一索引门禁，再沿用下载重试；本轮逐项 formula 阶段已成功升级则跳过重复升级。活跃命令不属于该 formula、但当前 RubyGems 已安装时，复用上述 Gem 目标权限检查与用户目录回退。归属无法确认或工具未登记时明确提示，不自动补装或切换活跃 Homebrew pod 来源。
   - 规格刷新：先复用工程相同的网络模块验证原链路及已有代理，再让同一子流程中的 CDN / GitHub Specs 实测与定向刷新继承选中环境；只按源的实际本地名称刷新，双源失败保留缓存并记录未完成。具体边界见 [CocoaPods 网络选路](#cocoapods-network)。
 - [**Python**](https://www.python.org/) / [**pip**](https://pip.pypa.io/) / [**uv**](https://docs.astral.sh/uv/)
-  - 对应更新：先执行内嵌运行时预检，再按已安装工具执行 `pyenv update`、`pyenv rehash`、`pipx upgrade-all`；pip 使用内嵌预检选定的 Homebrew 解释器
+  - 对应更新：先执行内嵌运行时预检，再按已安装工具执行 `pyenv update`、`pyenv rehash`、`pipx upgrade-all`；pip 使用预检选定的解释器。检测到 `EXTERNALLY-MANAGED` 时只检查 pip 版本，其升级随 Homebrew Python 公式维护，避免触发 [PEP 668](https://peps.python.org/pep-0668/)；不绕过系统包管理保护。
 - [**Dart**](https://dart.dev/) `pub` 缓存
-  - 对应更新：执行 `dart pub global list`、`dart pub cache repair`
+  - 对应更新：执行 `dart pub global list`，按当前 `dart pub cache repair --help` 决定是否添加 `--all`；`No pubspec.yaml found` 等错误即使返回零也按失败处理。
 - [**Git LFS**](https://git-lfs.com/) 初始化
   - 对应更新：执行 `git lfs install`，刷新 `core.compression`、`http.postBuffer` 等大文件相关 [**Git**](https://git-scm.com/) 参数
 - [**JobsKits**](https://github.com/JobsKits) 仓库
@@ -315,17 +319,19 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 
 1、首次进入 Homebrew 下载前，使用 Homebrew 官方 API 文件对 IPv4 和 IPv6 各做一次最多 `1 MiB`、最长 `8` 秒的小流量测速。
 
-2、正式下载先使用测速更快的协议；每条线路的低速阈值取该线路实测速度的四分之一，并限制在 `8 KiB/s` 到 `128 KiB/s` 之间。连续 `30` 秒低于动态阈值时，当前 Homebrew 命令停止该线路并自动切换另一协议重试。
+2、正式下载先使用测速更快的协议。测速来自 API 小文件，不能代表 GHCR bottle 的线路、并发带宽或后续速度，因此不据此抬高最低下载速度；连续 `60` 秒低于 `1 B/s` 时才终止近乎停滞的下载。
 
-3、Homebrew 通过日志管道运行时会隐藏 curl 原生进度条；脚本每 `20` 秒检查一次未完成下载缓存，有增长时输出最近增长量，没有增长时明确提示正在等待网络响应。
+3、Homebrew 通过日志管道运行时会隐藏 curl 原生进度条；脚本每 `20` 秒检查一次未完成下载缓存，有增长时输出最近增长量。该观察可能包含其它并发资源，不能证明每个包均成功，也不代替最终命令结果；支持自定义 `HOMEBREW_CACHE`。
 
 4、某条线路执行成功后，它会成为本轮后续 Homebrew 下载的首选，避免每个包重复猜测。
 
-5、IPv4 / IPv6 都触发网络失败时，脚本回到初始探测中较快的协议做最后一次宽松尝试。最终尝试不再关闭保护或追加三轮 curl 重试；连续 `60` 秒低于 `1 KiB/s` 就失败返回，既允许慢速续传，也不会无限静默卡住。
+5、首轮网络失败后切换另一 curl 协议，仍失败则回到原首选做最后一次尝试；末轮停滞窗口为 `120` 秒、门槛仍为 `1 B/s`。每条命令最多三轮，Homebrew 内部 curl 额外重试设为 `0`，避免多层叠加。权限、认证、证书或安装错误不会靠换线重试。前轮失败而后轮成功时以最终成功为准，不将已恢复的错误累计为最终失败。
 
-6、策略通过系统临时目录里的 `HOMEBREW_CURLRC` 生效；脚本退出时删除临时文件并恢复原有环境，不修改 `~/.curlrc`、`~/.zshrc`、`~/.zprofile` 或 macOS 系统代理。
+6、策略通过系统临时目录里的 `HOMEBREW_CURLRC` 及单条命令的环境变量生效，API 下载同时设置 Homebrew 自身的速度参数。主流程正常结束或收到中断信号时回收临时文件与后台进度进程，精确还原原 `HOMEBREW_CURLRC` 的未设置、空值或文件路径。网络策略不改 Shell 配置、原 curl 配置或 macOS 系统代理；既有 Homebrew shellenv 维护仍可能更新用户 Shell 配置。
 
-边界：这个全局策略覆盖脚本内所有可由 Homebrew `curl` 控制的下载。`softwareupdate`、Git tap / `git pull`、`npm`、`gem`、`pod`、`dart` 和 `flutter` 拥有各自的下载器，Homebrew 的 `HOMEBREW_CURLRC` 不会伪装成对它们生效。
+7、同轮的索引成功 / 失败按实际 Brew 可执行文件缓存；Python 与 CocoaPods 共用结果。索引失败时停止依赖该索引的公式或 cask 升级，保留日志，修复网络后重新运行。下载命令关闭自动 cleanup；仅本组升级全部完成后运行显式 cleanup，避免失败后清走重试所需内容。
+
+边界：[Homebrew 官方配置说明](https://docs.brew.sh/Manpage#environment)明确区分 curl 下载与 Git 传输。Git tap / `brew update` 内的 fetch 沿用已有 Git 网络及代理策略，额外传入当前子命令的低速保护与禁止凭据交互参数；curl 的 IPv4 / IPv6 切换不控制 Git 出口。`softwareupdate`、`npm`、`gem`、`pod`、`dart`、`flutter` 各有自己的下载器。完全不可达的 GitHub、GHCR 或 Flutter 存储服务仍会失败，脚本会如实记录，不能通过切换 IP 协议恢复不存在的网络链路。
 
 ## <span id="jobs-toc-heading-9" data-jobs-toc="v2">五、更新顺序总览 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -472,6 +478,8 @@ Homebrew 换线会重新执行当前幂等的 `brew update` / `brew upgrade` 命
 $TMPDIR/update.log
 ```
 
+日志以纯文本落盘；交互终端按能力显示颜色，非 TTY、`TERM=dumb` 和 `NO_COLOR` 不输出 ANSI。帮助、参数错误、未确认或取消入口保留上一份日志；确认进入本轮更新后才初始化日志。最终汇总区分完成、部分执行、跳过和失败，不以最后一条命令成功覆盖此前错误。
+
 ## <span id="jobs-toc-heading-15" data-jobs-toc="v2">八、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 运行时说明和核心流程已经写在 `update.command` 内部，不依赖同级 `README.md`。
@@ -487,7 +495,33 @@ update "$@"
 
 如果脚本被其他脚本 `source`，可以通过 `JOBS_MAC_ENV_SOURCE_MODE=1` 避免自动执行主流程。
 
-## <span id="jobs-toc-heading-16" data-jobs-toc="v2">九、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-16" data-jobs-toc="v2">8.1、隔离回归与检查 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+
+从本目录运行；测试使用专属临时目录与假命令，不执行真实 `update -t`，不安装或升级宿主工具：
+
+```zsh
+/bin/zsh -n ./update.command
+/bin/zsh ./Tests/update_result_tests.zsh
+/bin/zsh ./Tests/homebrew_network_tests.zsh
+/bin/zsh ./Tests/flutter_gem_tests.zsh
+/bin/zsh ./Tests/update_audit_tests.zsh
+/bin/zsh ./Tests/entrypoint_tests.zsh
+/bin/zsh ./Tests/cocoapods_network_tests.zsh
+/usr/bin/ruby ./Tests/cocoapods_proxy_tests.rb
+```
+
+| 回归文件 | 验证内容 |
+| --- | --- |
+| `update_result_tests.zsh` | 非零退出、零退出码明确错误、远端提交核验、Shell 函数环境保留、日志写入、sudo 精确授权、失败 / 部分 / 跳过汇总、Dart 参数适配 |
+| `homebrew_network_tests.zsh` | 停滞门槛、协议重试、恢复后的最终状态、索引共享、失败索引门禁、API 降级、缓存保留、curl 配置还原 |
+| `flutter_gem_tests.zsh` | FVM 固定版本保护、SDK 失败后停止后续动作、doctor 错误、隔离标记查询失败、只读插件、用户 Gem 安装与路径边界 |
+| `update_audit_tests.zsh` | 含空格路径、配置写入失败、健康发现、Python 只读及包管理边界、信号退出与私有临时文件回收 |
+| `entrypoint_tests.zsh` | 帮助与参数错误、自述确认 / 取消、非交互边界、日志初始化与纯文本输出 |
+| `cocoapods_network_tests.zsh` / `cocoapods_proxy_tests.rb` | CocoaPods 归属、索引门禁、选源、代理继承、超时与失败保留缓存 |
+
+原生扩展的独立回归命令见 [Ruby 原生扩展](#gem-native-extensions)。隔离回归证明分支和结果判定符合预期；真实受限网络上的整轮更新仍需在目标电脑运行，不能把假命令成功当作 GitHub / GHCR / Flutter 存储已恢复。
+
+## <span id="jobs-toc-heading-17" data-jobs-toc="v2">九、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```mermaid
 flowchart TD
@@ -498,13 +532,15 @@ flowchart TD
     E -->|输入任意字符后回车| F[执行升级 / 刷新]
     E -->|直接回车| G[跳过当前项]
     F --> H{是否失败}
-    H -->|失败| I[记录警告并继续]
-    H -->|成功| J[记录成功]
+    H -->|失败| I[记录未完成并继续]
+    H -->|成功| J[结合跳过项记录完整或部分完成]
     G --> K{是否还有后续项}
     I --> K
     J --> K
     K -->|有| D
-    K -->|无| L([输出汇总和日志路径])
+    K -->|无| L{所选任务是否全部完成}
+    L -->|是| M([成功退出并输出日志路径])
+    L -->|否| N([列出未完成项并非零退出])
 ```
 
 `brew` 数组对齐关系：
@@ -516,15 +552,17 @@ flowchart TD
     B --> E[Homebrew 全局自适应下载]
     D --> E
     E --> F[IPv4 / IPv6 测速并选择快线]
-    F --> G{30 秒持续低于动态阈值}
+    F --> G{60 秒近乎停滞或传输失败}
     G -->|是| H[换线后重试当前 brew 命令]
     G -->|否| I[继续当前下载]
     H --> J{双线路是否都失败}
-    J -->|是| K[宽松阈值做最后一次有界续传]
+    J -->|是| K[120 秒停滞窗口做最后一次尝试]
     J -->|否| L[成功线路成为后续首选]
     I --> L
-    K --> L
-    L --> M[README.md 同步记录]
+    K --> N{是否成功}
+    N -->|是| L
+    N -->|否| O[记录失败并保留缓存]
+    L --> M[后续更新共用成功线路]
 ```
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

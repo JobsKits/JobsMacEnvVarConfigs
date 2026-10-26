@@ -1,8 +1,8 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：update.command
-# - 核心用途：执行“update”对应的自动化任务。
-# - 影响范围：可能修改当前项目、用户环境或脚本指定的目标。
+# - 核心用途：按项更新 macOS 开发工具并核验结果，区分失败、跳过和部分完成。
+# - 影响范围：所选工具、用户 Shell 配置、SDK、包缓存和既有 JobsKits 仓库。
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，按 Ctrl+C 可取消。
 
 
@@ -14,7 +14,7 @@
 # 1. 适合 .command 双击运行，也可终端执行。
 # 2. 启动后先显示内置 README，并等待回车确认。
 # 3. 普通升级项统一为：直接回车跳过，输入任意字符后回车执行。
-# 4. 单项失败不阻断后续更新项，但会写入日志。
+# 4. 单项失败不阻断后续更新项；所选任务未全部完成时最终返回非零。
 # 5. 不存在的工具不在 update 中静默安装，只提示回到 install.command 补装。
 # ============================================================
 
@@ -416,7 +416,7 @@ _jobs_python_update_brew_once() {
   fi
   [[ "${_JOBS_PYTHON_UPDATED_BREWS[$brew_key]:-}" != "$token" ]] || return 0
   _jobs_python_note "ℹ 更新 Homebrew 本体及公式索引：$JOBS_HOMEBREW_BIN update"
-  if ! HOMEBREW_NO_AUTO_UPDATE=1 "$JOBS_HOMEBREW_BIN" update; then
+  if ! jobs_update_run_brew_update "$JOBS_HOMEBREW_BIN"; then
     _jobs_python_note '✖ Homebrew 更新失败，停止 Python 准备；未升级其它公式。'
     return 1
   fi
@@ -502,7 +502,7 @@ jobs_python_ensure() {
     (( probe_code != 2 )) || action=upgrade
   fi
   _jobs_python_confirm_required "必需的 $formula 未就绪，执行 brew $action $formula" || return 1
-  if ! HOMEBREW_NO_AUTO_UPDATE=1 "$JOBS_HOMEBREW_BIN" "$action" "$formula"; then
+  if ! jobs_update_run_brew_adaptive_cmd "准备 Python：brew $action $formula" plain "$JOBS_HOMEBREW_BIN" "$action" "$formula"; then
     _jobs_python_note "✖ brew $action $formula 失败；停止，不重复安装。"
     return 1
   fi
@@ -627,15 +627,27 @@ SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
 LOG_FILE="${TMPDIR:-/tmp}/${SCRIPT_BASENAME}.log"
 JOBS_UPDATE_TRUST_MODE=0
+JOBS_UPDATE_LOG_READY=1
+JOBS_UPDATE_ENTRY_READY=0
+JOBS_UPDATE_ENTRY_EXIT_CODE=0
 JOBS_UPDATE_COCOAPODS_BREW_UPDATED=0
+JOBS_UPDATE_FAILURE_COUNT=0
+JOBS_UPDATE_SKIP_COUNT=0
+JOBS_UPDATE_COMMAND_COUNT=0
+JOBS_UPDATE_FAILED_STEPS=0
+JOBS_UPDATE_PARTIAL_STEPS=0
+JOBS_UPDATE_SKIPPED_STEPS=0
+JOBS_UPDATE_SUCCEEDED_STEPS=0
+typeset -a JOBS_UPDATE_FAILED_DESCRIPTIONS=()
+typeset -a JOBS_UPDATE_COMMAND_OUTPUT_FILES=()
 readonly JOBS_UPDATE_NETWORK_PROBE_URL="https://formulae.brew.sh/api/formula.jws.json"
 readonly JOBS_UPDATE_NETWORK_PROBE_BYTES=1048576
 readonly JOBS_UPDATE_NETWORK_PROBE_TIMEOUT_SECONDS=8
-readonly JOBS_UPDATE_MAX_LOW_SPEED_LIMIT_BPS=131072
-readonly JOBS_UPDATE_MIN_LOW_SPEED_LIMIT_BPS=8192
-readonly JOBS_UPDATE_FINAL_LOW_SPEED_LIMIT_BPS=1024
-readonly JOBS_UPDATE_LOW_SPEED_SECONDS=30
-readonly JOBS_UPDATE_FINAL_LOW_SPEED_SECONDS=60
+readonly JOBS_UPDATE_MAX_LOW_SPEED_LIMIT_BPS=1
+readonly JOBS_UPDATE_MIN_LOW_SPEED_LIMIT_BPS=1
+readonly JOBS_UPDATE_FINAL_LOW_SPEED_LIMIT_BPS=1
+readonly JOBS_UPDATE_LOW_SPEED_SECONDS=60
+readonly JOBS_UPDATE_FINAL_LOW_SPEED_SECONDS=120
 readonly JOBS_UPDATE_PROGRESS_INTERVAL_SECONDS=20
 JOBS_UPDATE_NETWORK_READY=0
 JOBS_UPDATE_PREFERRED_IP_FAMILY="ipv4"
@@ -649,6 +661,8 @@ JOBS_UPDATE_LAST_BREW_OUTPUT_FILE=""
 JOBS_UPDATE_PROGRESS_MONITOR_PID=""
 JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC=""
 JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC_WAS_SET=0
+typeset -A JOBS_UPDATE_BREW_UPDATE_RESULTS=()
+JOBS_UPDATE_DEFER_BREW_FAILURE=0
 
 
 # ---------- 全局配置：必须与 install.command 保持同源 ----------
@@ -715,7 +729,39 @@ readonly -a BREW_FORMULAE=(
   radare2
 )
 # ---------- 彩色日志 ----------
-log()            { echo -e "$1" | tee -a "$LOG_FILE"; }
+# 判断终端是否允许彩色展示；日志文件始终保留纯文本。
+jobs_update_color_enabled() {
+  [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != dumb && -z "${NO_COLOR+x}" &&
+     "${PLAIN_OUTPUT:-0}" != 1 && "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]]
+}
+# 同步显示命令流并写入纯文本日志，可额外保存本次命令输出供结果核验。
+jobs_update_log_stream() {
+  local use_color=0 stream_log='' stream_output="${1:-}"
+  jobs_update_color_enabled && use_color=1
+  (( JOBS_UPDATE_LOG_READY == 0 )) || stream_log="$LOG_FILE"
+  JOBS_UPDATE_STREAM_LOG_FILE="$stream_log" JOBS_UPDATE_STREAM_OUTPUT_FILE="$stream_output" \
+    /usr/bin/awk -v use_color="$use_color" '
+      BEGIN {
+        esc = sprintf("%c", 27)
+        log_file = ENVIRON["JOBS_UPDATE_STREAM_LOG_FILE"]
+        output_file = ENVIRON["JOBS_UPDATE_STREAM_OUTPUT_FILE"]
+        if (log_file != "") { printf "%s", "" >> log_file; fflush(log_file) }
+        if (output_file != "") { printf "%s", "" >> output_file; fflush(output_file) }
+      }
+      {
+        clean = $0
+        gsub(esc "\\[[0-9;?]*[ -/]*[@-~]", "", clean)
+        print (use_color ? $0 : clean)
+        if (log_file != "") print clean >> log_file
+        if (output_file != "") print clean >> output_file
+        fflush()
+      }
+    '
+}
+# 统一处理展示颜色与日志落盘；确认前仅展示，不覆盖已有日志。
+log() {
+  printf '%b\n' "$1" | jobs_update_log_stream
+}
 # 按当前输出级别记录终端信息，并同步写入脚本日志。
 color_echo()     { log "\033[1;32m$1\033[0m"; }
 # 按当前输出级别记录终端信息，并同步写入脚本日志。
@@ -824,9 +870,97 @@ jobs_update_prompt_run() {
   note_echo "已跳过：${title}"
   return 1
 }
-# 封装 jobs_update_run_step 对应的独立处理逻辑。
+# 登记最终失败；保留状态，避免上层继续执行时被 || true 吞掉。
+jobs_update_record_failure() {
+  local desc="$1" exit_code="${2:-1}"
+  (( JOBS_UPDATE_FAILURE_COUNT += 1 ))
+  JOBS_UPDATE_FAILED_DESCRIPTIONS+=("${desc}（${exit_code}）")
+  return 0
+}
+# 登记明确跳过，让缺少环境或权限的项目不再显示更新完成。
+jobs_update_record_skip() {
+  (( JOBS_UPDATE_SKIP_COUNT += 1 ))
+  warn_echo "已跳过：$1"
+}
+# 只识别明确失败行，避免把普通版本说明中的 error 一词当成错误。
+jobs_update_output_has_failure() {
+  /usr/bin/awk '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-9;]*[A-Za-z]", "")
+      if ($0 ~ /^[[:space:]]*([Ee][Rr][Rr][Oo][Rr]:|ERROR[[:space:]]*:|fatal:|curl: \\([1-9][0-9]*\\)|npm (ERR!|error)([[:space:]]|$)|No pubspec[.]yaml found[.]|SocketException:|ProcessException:)/ ||
+          $0 ~ /未执行 Git 网络命令|There was an error updating|[Cc]ould not resolve host:|[Ff]ailed to connect to .* port [0-9]/ ||
+          $0 ~ /^[[:space:]]*([Ff]ailed to download|[Dd]ownload failed:)/) failed = 1
+    }
+    END { exit !failed }
+  ' "$1"
+}
+# 只将 sudo 自身的明确授权拒绝视为跳过，业务命令失败仍计入失败。
+jobs_update_output_is_sudo_denied() {
+  /usr/bin/grep -Eqi '^sudo:.*(a password is required|a terminal is required|no tty present|authentication (is required|failure)|not in the sudoers|not allowed to (run sudo|execute)|may not run sudo)|^[Ss]orry, user .* is not allowed to execute' "$1"
+}
+# 统一核对退出码、落盘结果及第三方明确错误输出。
+jobs_update_finish_command() {
+  local desc="$1" exit_code="$2" output_file="$3" log_exit_code="${4:-0}" result_mode="${5:-plain}"
+  if (( log_exit_code != 0 )); then
+    warn_echo "${desc}：输出记录失败（exit code: ${log_exit_code}），不能确认本次结果。"
+    (( exit_code == 0 )) && exit_code="$log_exit_code"
+  fi
+  if (( exit_code == 0 )) && jobs_update_output_has_failure "$output_file"; then
+    exit_code=1
+    warn_echo "${desc}：命令返回 0，但输出包含明确失败，按未完成处理。"
+  fi
+  if [[ "$result_mode" == sudo ]] && (( exit_code != 0 && log_exit_code == 0 )) && jobs_update_output_is_sudo_denied "$output_file"; then
+    /bin/rm -f -- "$output_file" "${output_file}.status"
+    jobs_update_record_skip "${desc}（无人值守模式未获该命令的管理员授权）"
+    warm_echo '请在场时以普通模式运行 update，完成管理员授权。'
+    return "$exit_code"
+  fi
+  (( JOBS_UPDATE_COMMAND_COUNT += 1 ))
+  /bin/rm -f -- "$output_file" "${output_file}.status"
+  if (( exit_code == 0 )); then
+    success_echo "$desc：完成"
+  else
+    jobs_update_record_failure "$desc" "$exit_code"
+    warn_echo "$desc：失败（exit code: ${exit_code}）"
+  fi
+  return "$exit_code"
+}
+# 实时落盘但让被调 Shell 函数留在当前进程；花括号等待输出消费者写完。
+jobs_update_execute_logged() {
+  local desc="$1" input_mode="$2" output_file='' exit_code=0 log_exit_code=1
+  local JOBS_UPDATE_COMMAND_LOG_ACTIVE=1
+  shift 2
+  output_file="$(mktemp "${TMPDIR:-/tmp}/jobs-update-command.XXXXXXXX")" || {
+    jobs_update_record_failure "$desc（无法创建输出记录）" 1
+    return 1
+  }
+  JOBS_UPDATE_COMMAND_OUTPUT_FILES+=("$output_file")
+  if [[ "$input_mode" == yes ]]; then
+    { "$@" <<< 'y'; exit_code=$?; } > >(jobs_update_log_stream "$output_file"; print -r -- "$?" > "${output_file}.status") 2>&1
+  else
+    { "$@"; exit_code=$?; } > >(jobs_update_log_stream "$output_file"; print -r -- "$?" > "${output_file}.status") 2>&1
+  fi
+  if [[ -r "${output_file}.status" ]]; then
+    IFS= read -r log_exit_code < "${output_file}.status" || log_exit_code=1
+    [[ "$log_exit_code" == <-> ]] || log_exit_code=1
+  fi
+  jobs_update_finish_command "$desc" "$exit_code" "$output_file" "$log_exit_code" "$input_mode"
+}
+# 主流程退出或中断时回收本脚本创建的命令输出，不扫描其它临时文件。
+jobs_update_cleanup_command_outputs() {
+  local output_file=''
+  for output_file in "${JOBS_UPDATE_COMMAND_OUTPUT_FILES[@]}"; do
+    [[ "${output_file:t}" == jobs-update-command.* ]] || continue
+    /bin/rm -f -- "$output_file" "${output_file}.status"
+  done
+  JOBS_UPDATE_COMMAND_OUTPUT_FILES=()
+}
+# 汇总当前步骤内的真实失败和跳过，同时允许继续执行后续项目。
 jobs_update_run_step() {
   local title="$1"
+  local failures_before="$JOBS_UPDATE_FAILURE_COUNT" skips_before="$JOBS_UPDATE_SKIP_COUNT"
+  local commands_before="$JOBS_UPDATE_COMMAND_COUNT"
   shift
 
   echo ""
@@ -836,10 +970,23 @@ jobs_update_run_step() {
   "$@"
   local exit_code=$?
 
-  if (( exit_code == 0 )); then
-    success_echo "$title：完成"
+  if (( exit_code != 0 && JOBS_UPDATE_FAILURE_COUNT == failures_before && JOBS_UPDATE_SKIP_COUNT == skips_before )); then
+    jobs_update_record_failure "$title" "$exit_code"
+  fi
+  if (( JOBS_UPDATE_FAILURE_COUNT > failures_before )); then
+    (( JOBS_UPDATE_FAILED_STEPS += 1 ))
+    warn_echo "$title：未完成（失败 $(( JOBS_UPDATE_FAILURE_COUNT - failures_before )) 项），继续后续更新项"
+  elif (( JOBS_UPDATE_SKIP_COUNT > skips_before )); then
+    if (( JOBS_UPDATE_COMMAND_COUNT > commands_before )); then
+      (( JOBS_UPDATE_PARTIAL_STEPS += 1 ))
+      warn_echo "$title：部分执行（跳过 $(( JOBS_UPDATE_SKIP_COUNT - skips_before )) 项）"
+    else
+      (( JOBS_UPDATE_SKIPPED_STEPS += 1 ))
+      warn_echo "$title：已跳过"
+    fi
   else
-    warn_echo "$title：返回非 0（${exit_code}），继续后续更新项"
+    (( JOBS_UPDATE_SUCCEEDED_STEPS += 1 ))
+    success_echo "$title：完成"
   fi
 
   return 0
@@ -852,16 +999,7 @@ jobs_update_run_cmd() {
   note_echo "$desc"
   debug_echo "执行命令：$*"
 
-  "$@"
-  local exit_code=$?
-
-  if (( exit_code == 0 )); then
-    success_echo "$desc：完成"
-  else
-    warn_echo "$desc：失败（exit code: ${exit_code}）"
-  fi
-
-  return $exit_code
+  jobs_update_execute_logged "$desc" plain "$@"
 }
 # 统一执行需要管理员权限的命令，确保无人值守时不会停在密码提示。
 jobs_update_run_sudo_cmd() {
@@ -869,13 +1007,10 @@ jobs_update_run_sudo_cmd() {
   shift
 
   if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
-    if jobs_update_run_cmd "$desc（无人值守）" sudo -n "$@"; then
-      return 0
-    fi
-
-    warn_echo "无人值守模式未获得该命令的无密码授权，已跳过：${desc}"
-    warm_echo "如确实需要执行，请之后在场以普通模式手动运行 update。"
-    return 1
+    note_echo "$desc（无人值守）"
+    debug_echo "执行命令：sudo -n $*"
+    jobs_update_execute_logged "$desc（无人值守）" sudo sudo -n "$@"
+    return $?
   fi
 
   jobs_update_run_cmd "$desc" sudo "$@"
@@ -904,19 +1039,7 @@ jobs_update_run_sh() {
   local desc="$1"
   local cmd="$2"
 
-  note_echo "$desc"
-  debug_echo "执行命令：${cmd}"
-
-  /bin/zsh -c "$cmd"
-  local exit_code=$?
-
-  if (( exit_code == 0 )); then
-    success_echo "$desc：完成"
-  else
-    warn_echo "$desc：失败（exit code: ${exit_code}）"
-  fi
-
-  return $exit_code
+  jobs_update_run_cmd "$desc" /bin/zsh -c "$cmd"
 }
 # 对已知会询问 y/n 的命令定点输入 y，避免托管模式中途卡住。
 jobs_update_run_cmd_with_yes() {
@@ -926,16 +1049,7 @@ jobs_update_run_cmd_with_yes() {
   note_echo "$desc"
   debug_echo "执行命令：printf 'y\\n' | $*"
 
-  printf 'y\n' | "$@" 2>&1 | tee -a "$LOG_FILE"
-  local exit_code=${pipestatus[2]}
-
-  if (( exit_code == 0 )); then
-    success_echo "$desc：完成"
-  else
-    warn_echo "$desc：失败（exit code: ${exit_code}）"
-  fi
-
-  return $exit_code
+  jobs_update_execute_logged "$desc" yes "$@"
 }
 # 返回指定 IP 协议对应的 curl 参数。
 jobs_update_ip_family_curl_flag() {
@@ -988,19 +1102,9 @@ jobs_update_probe_speed_for_family() {
     *) print -r -- "0" ;;
   esac
 }
-# 按实测带宽计算低速阈值，避免慢线路被固定阈值误判为断线。
+# 只检测接近停滞的传输；API 单点测速不能代表并发 bottle 的速度。
 jobs_update_adaptive_low_speed_limit_for_family() {
-  local speed=""
-  local limit=0
-
-  speed="$(jobs_update_probe_speed_for_family "$1")"
-  [[ "$speed" == <-> ]] || speed=0
-  if (( speed > 0 )); then
-    limit=$((speed / 4))
-  fi
-  (( limit < JOBS_UPDATE_MIN_LOW_SPEED_LIMIT_BPS )) && limit=$JOBS_UPDATE_MIN_LOW_SPEED_LIMIT_BPS
-  (( limit > JOBS_UPDATE_MAX_LOW_SPEED_LIMIT_BPS )) && limit=$JOBS_UPDATE_MAX_LOW_SPEED_LIMIT_BPS
-  print -r -- "$limit"
+  print -r -- "$JOBS_UPDATE_MIN_LOW_SPEED_LIMIT_BPS"
 }
 # 写入仅供本轮 update 使用的 Homebrew curl 配置。
 jobs_update_write_brew_curlrc() {
@@ -1081,10 +1185,11 @@ jobs_update_ensure_network_strategy() {
   jobs_update_write_brew_curlrc "$JOBS_UPDATE_PREFERRED_IP_FAMILY" adaptive || return 1
   export HOMEBREW_CURLRC="$JOBS_UPDATE_BREW_CURLRC"
   JOBS_UPDATE_NETWORK_READY=1
-  note_echo "已启用全局 Homebrew 自适应下载：低速阈值会按线路实测速度自动收敛，停滞时切换 IPv4 / IPv6。"
+  note_echo "已启用本轮 Homebrew 下载策略：测速只决定 curl 协议顺序；仅在传输近乎停滞时超时，失败后有限重试。Git 拉取沿用已有网络策略。"
 }
 # 清理临时网络配置，并恢复用户原有的 Homebrew curl 设置。
 jobs_update_cleanup_network_strategy() {
+  jobs_update_cleanup_command_outputs
   if (( JOBS_UPDATE_NETWORK_READY != 1 )) && [[ -z "$JOBS_UPDATE_BREW_CURLRC" && -z "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]]; then
     return 0
   fi
@@ -1101,6 +1206,10 @@ jobs_update_cleanup_network_strategy() {
     unset HOMEBREW_CURLRC
   fi
   JOBS_UPDATE_NETWORK_READY=0
+  JOBS_UPDATE_BREW_CURLRC=''
+  JOBS_UPDATE_LAST_BREW_OUTPUT_FILE=''
+  JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC=''
+  JOBS_UPDATE_ORIGINAL_HOMEBREW_CURLRC_WAS_SET=0
 }
 # 更新首选 IP 协议，并重写后续 Homebrew 下载使用的速度守卫。
 jobs_update_prefer_ip_family() {
@@ -1116,7 +1225,7 @@ jobs_update_prefer_ip_family() {
 }
 # 汇总 Homebrew 未完成下载缓存的当前字节数。
 jobs_update_homebrew_incomplete_bytes() {
-  local cache_dir="${HOME}/Library/Caches/Homebrew/downloads"
+  local cache_dir="${HOMEBREW_CACHE:-${HOME}/Library/Caches/Homebrew}/downloads"
   local file=""
   local size=0
   local total=0
@@ -1159,7 +1268,7 @@ jobs_update_monitor_brew_progress() {
     current_bytes="$(jobs_update_homebrew_incomplete_bytes)"
     if (( current_bytes > previous_bytes )); then
       delta_bytes=$((current_bytes - previous_bytes))
-      info_echo "${desc}（${family}）仍在下载：最近增加 $(jobs_update_format_download_bytes "$delta_bytes")，未完成缓存共 $(jobs_update_format_download_bytes "$current_bytes")。"
+      info_echo "${desc}（curl ${family}）仍在执行：观察到缓存最近增加 $(jobs_update_format_download_bytes "$delta_bytes")，未完成缓存共 $(jobs_update_format_download_bytes "$current_bytes")；个别资源可能已失败，最终以命令结果为准。"
     else
       gray_echo "${desc}（${family}）仍在执行，暂未观察到下载缓存增长；若持续低于阈值将自动超时。"
     fi
@@ -1175,14 +1284,17 @@ jobs_update_start_brew_progress_monitor() {
 # 停止当前 Homebrew 进度心跳并回收后台进程。
 jobs_update_stop_brew_progress_monitor() {
   [[ -n "$JOBS_UPDATE_PROGRESS_MONITOR_PID" ]] || return 0
-  kill "$JOBS_UPDATE_PROGRESS_MONITOR_PID" 2>/dev/null || true
+  jobs_update_specs_terminate_tree "$JOBS_UPDATE_PROGRESS_MONITOR_PID"
   wait "$JOBS_UPDATE_PROGRESS_MONITOR_PID" 2>/dev/null || true
   JOBS_UPDATE_PROGRESS_MONITOR_PID=""
 }
 # 判断 Homebrew 失败是否来自下载链路，以免对安装或权限错误盲目换线。
 jobs_update_brew_failure_is_network_related() {
   [[ -n "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" && -f "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]] || return 1
-  grep -Eqi 'curl: \([0-9]+\)|Failed to download resource|Download failed|Could not resolve host|Failed to connect|Connection timed out|Operation timed out|Operation too slow|SSL connect error|Recv failure|Send failure|HTTP/[0-9.]+ stream' "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+  if grep -Eqi 'Permission denied|Authentication failed|SSL certificate problem|certificate verify failed|returned error: (401|403)|HTTP(/[0-9.]+)? (401|403)|Repository not found' "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"; then
+    return 1
+  fi
+  grep -Eqi 'curl: \([0-9]+\)|Failed to download resource|Download failed|Could not resolve host|Failed to connect|Couldn.t connect|Connection timed out|Operation timed out|Operation too slow|SSL connect error|Recv failure|Send failure|HTTP/[0-9.]+ stream|unable to access|Fetching .+ failed|Could not read from remote repository|网络.*不可达|未执行 Git 网络命令' "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
 }
 # 使用指定 IP 协议执行一次 Homebrew 下载命令。
 jobs_update_run_brew_network_attempt() {
@@ -1191,21 +1303,41 @@ jobs_update_run_brew_network_attempt() {
   local family="$3"
   local guard_mode="$4"
   local retries=0
+  local -a brew_env
+  local -a attempt_status
   shift 4
 
   jobs_update_write_brew_curlrc "$family" "$guard_mode" || return 1
   [[ -n "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]] || return 1
   : > "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
-  note_echo "${desc}（${family}，连续 ${JOBS_UPDATE_ACTIVE_LOW_SPEED_SECONDS} 秒低于 $(jobs_update_format_download_speed "$JOBS_UPDATE_ACTIVE_LOW_SPEED_LIMIT_BPS") 时终止当前尝试）"
+  note_echo "${desc}（curl ${family}，连续 ${JOBS_UPDATE_ACTIVE_LOW_SPEED_SECONDS} 秒低于 ${JOBS_UPDATE_ACTIVE_LOW_SPEED_LIMIT_BPS} B/s 时终止下载；Git 连接不受 IP 切换控制）"
   debug_echo "执行命令：HOMEBREW_CURLRC=<临时配置> HOMEBREW_CURL_RETRIES=${retries} $*"
   jobs_update_start_brew_progress_monitor "$desc" "$family"
+  brew_env=(env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+    HOMEBREW_CURLRC="$JOBS_UPDATE_BREW_CURLRC" HOMEBREW_CURL_RETRIES="$retries"
+    HOMEBREW_CURL_SPEED_LIMIT="$JOBS_UPDATE_ACTIVE_LOW_SPEED_LIMIT_BPS"
+    HOMEBREW_CURL_SPEED_TIME="$JOBS_UPDATE_ACTIVE_LOW_SPEED_SECONDS"
+    GIT_HTTP_LOW_SPEED_LIMIT=1 GIT_HTTP_LOW_SPEED_TIME=60
+    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never)
 
   if [[ "$confirmation_mode" == "yes" ]]; then
-    printf 'y\n' | env HOMEBREW_CURLRC="$JOBS_UPDATE_BREW_CURLRC" HOMEBREW_CURL_RETRIES="$retries" "$@" 2>&1 | tee -a "$LOG_FILE" | tee "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
-    local exit_code=${pipestatus[2]}
+    printf 'y\n' | "${brew_env[@]}" "$@" 2>&1 | jobs_update_log_stream "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+    attempt_status=("${pipestatus[@]}")
+    local exit_code=${attempt_status[2]}
+    if (( attempt_status[3] != 0 )); then
+      exit_code=1
+    fi
   else
-    env HOMEBREW_CURLRC="$JOBS_UPDATE_BREW_CURLRC" HOMEBREW_CURL_RETRIES="$retries" "$@" 2>&1 | tee -a "$LOG_FILE" | tee "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
-    local exit_code=${pipestatus[1]}
+    "${brew_env[@]}" "$@" 2>&1 | jobs_update_log_stream "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+    attempt_status=("${pipestatus[@]}")
+    local exit_code=${attempt_status[1]}
+    if (( attempt_status[2] != 0 )); then
+      exit_code=1
+    fi
+  fi
+  if (( exit_code == 0 )) && grep -Eqi '(^|[[:space:]])(Error:|fatal:)|Failed to download resource|Download failed|未执行 Git 网络命令' "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"; then
+    exit_code=1
+    warn_echo "${desc}：命令返回 0，但输出包含明确失败，按未完成处理。"
   fi
   jobs_update_stop_brew_progress_monitor
 
@@ -1224,6 +1356,7 @@ jobs_update_run_brew_adaptive_cmd() {
   local secondary_family=""
   local exit_code=0
   shift 2
+  (( JOBS_UPDATE_COMMAND_COUNT += 1 ))
 
   if ! jobs_update_ensure_network_strategy; then
     if [[ "$confirmation_mode" == "yes" ]]; then
@@ -1247,10 +1380,11 @@ jobs_update_run_brew_adaptive_cmd() {
     return 0
   fi
   if ! jobs_update_brew_failure_is_network_related; then
+    (( JOBS_UPDATE_DEFER_BREW_FAILURE == 1 )) || jobs_update_record_failure "$desc" "$exit_code"
     return $exit_code
   fi
 
-  warn_echo "${primary_family} 下载异常或持续低速，自动切换到 ${secondary_family}。"
+  warn_echo "Homebrew 下载或 Git 拉取失败；将 curl 切换到 ${secondary_family} 后重试，保留现有下载缓存。"
   jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$secondary_family" adaptive "$@"
   exit_code=$?
   if (( exit_code == 0 )); then
@@ -1258,33 +1392,53 @@ jobs_update_run_brew_adaptive_cmd() {
     return 0
   fi
   if ! jobs_update_brew_failure_is_network_related; then
+    (( JOBS_UPDATE_DEFER_BREW_FAILURE == 1 )) || jobs_update_record_failure "$desc" "$exit_code"
     return $exit_code
   fi
 
-  warn_echo "IPv4 / IPv6 均触发网络失败；将使用探测中较快的 ${primary_family} 做最后一次宽松低速尝试，停滞时仍会退出。"
+  warn_echo "两轮均未完成；使用 curl ${primary_family} 做最后一次停滞时限更宽的尝试。不可达网络仍会失败，不表示 Git 线路已恢复。"
   jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$primary_family" final "$@"
   exit_code=$?
   jobs_update_prefer_ip_family "$primary_family"
+  if (( exit_code != 0 && JOBS_UPDATE_DEFER_BREW_FAILURE != 1 )); then
+    jobs_update_record_failure "$desc" "$exit_code"
+  fi
   return $exit_code
 }
 # 执行 brew update，遇到 Homebrew API 下载失败时自动降级为本地 tap 更新。
 jobs_update_run_brew_update() {
-  jobs_update_run_brew_adaptive_cmd "brew update（更新软件列表）" plain brew update
+  local brew_bin="${1:-$(find_brew_bin)}"
+  local JOBS_UPDATE_DEFER_BREW_FAILURE=1
+  [[ -n "$brew_bin" ]] || return 1
+  local brew_key="${brew_bin:A}"
+  if [[ -n "${JOBS_UPDATE_BREW_UPDATE_RESULTS[$brew_key]:-}" ]]; then
+    local previous_result="${JOBS_UPDATE_BREW_UPDATE_RESULTS[$brew_key]}"
+    if (( previous_result == 0 )); then
+      info_echo "复用本轮已成功更新的 Homebrew 索引：$brew_bin"
+    else
+      warn_echo "本轮 Homebrew 索引更新已失败，停止依赖该索引的升级；修复网络后重新运行：$brew_bin update"
+    fi
+    return "$previous_result"
+  fi
+  jobs_update_run_brew_adaptive_cmd "brew update（更新软件列表）" plain "$brew_bin" update
   local exit_code=$?
 
   if (( exit_code == 0 )); then
+    JOBS_UPDATE_BREW_UPDATE_RESULTS[$brew_key]=0
     return 0
   fi
 
   if [[ -n "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]] && grep -Eq "formulae\\.brew\\.sh/api|Failed to download .*\\.jws\\.json" "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"; then
     warn_echo "brew update API 数据下载失败，将使用 HOMEBREW_NO_INSTALL_FROM_API=1 降级重试。"
     warm_echo "说明：该模式会跳过 formulae.brew.sh API JSON 下载，改用本地 tap 更新，通常更慢但更稳。"
-    jobs_update_run_brew_adaptive_cmd "brew update（本地 tap 降级重试）" plain env HOMEBREW_NO_INSTALL_FROM_API=1 brew update
+    jobs_update_run_brew_adaptive_cmd "brew update（本地 tap 降级重试）" plain env HOMEBREW_NO_INSTALL_FROM_API=1 "$brew_bin" update
     exit_code=$?
   else
     warn_echo "brew update（更新软件列表）：失败（exit code: ${exit_code}）"
   fi
 
+  JOBS_UPDATE_BREW_UPDATE_RESULTS[$brew_key]=$exit_code
+  (( exit_code == 0 )) || jobs_update_record_failure "Homebrew 本体及公式索引更新" "$exit_code"
   return $exit_code
 }
 # 执行 brew upgrade，托管模式下自动确认 Homebrew 的 y/n 提示。
@@ -1310,66 +1464,70 @@ append_once() {
   local line="$1"
   local file="${2:-$HOME/.zshrc}"
 
-  mkdir -p "$(dirname "$file")"
-  touch "$file"
+  mkdir -p "$(dirname "$file")" || return $?
+  touch "$file" || return $?
 
   if grep -Fqx "$line" "$file"; then
     return 0
+  else
+    local match_result=$?
+    (( match_result == 1 )) || return "$match_result"
   fi
 
-  echo "" >> "$file"
-  echo "$line" >> "$file"
+  print -r -- "" >> "$file" || return $?
+  print -r -- "$line" >> "$file"
 }
 # 封装 append_comment_once 对应的独立处理逻辑。
 append_comment_once() {
   local comment="$1"
   local file="$2"
 
-  mkdir -p "$(dirname "$file")"
-  touch "$file"
+  mkdir -p "$(dirname "$file")" || return $?
+  touch "$file" || return $?
 
   if grep -Fqx "$comment" "$file"; then
     return 0
+  else
+    local match_result=$?
+    (( match_result == 1 )) || return "$match_result"
   fi
 
-  echo "" >> "$file"
-  echo "$comment" >> "$file"
+  print -r -- "" >> "$file" || return $?
+  print -r -- "$comment" >> "$file"
 }
 # 解析并返回后续流程需要的目标信息。
 find_brew_bin() {
-  if command -v brew >/dev/null 2>&1; then
-    command -v brew
-    return 0
-  fi
-
-  local candidate
-  for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
-    if [[ -x "$candidate" ]]; then
-      echo "$candidate"
-      return 0
-    fi
-  done
-
-  return 1
+  jobs_brew_find
 }
 # 执行对应的环境配置或同步处理。
 setup_brew_shellenv() {
   local brew_bin="$1"
-  local shellenv_line="eval \"\$(${brew_bin} shellenv)\""
+  local shellenv_line="eval \"\$(${(q)brew_bin} shellenv)\"" shellenv_output=''
 
   if [[ ! -x "$brew_bin" ]]; then
     warn_echo "Homebrew 可执行文件不存在或不可执行：${brew_bin}"
     return 1
   fi
+  shellenv_output="$("$brew_bin" shellenv)" || {
+    jobs_update_record_failure "Homebrew shellenv：$brew_bin" 1
+    return 1
+  }
+  eval "$shellenv_output" || {
+    jobs_update_record_failure "激活 Homebrew shellenv：$brew_bin" 1
+    return 1
+  }
 
   local target_file
   for target_file in "${HOME}/.zprofile" "${HOME}/.zshrc"; do
-    append_comment_once "# Homebrew shellenv" "$target_file"
-    append_once "$shellenv_line" "$target_file"
+    if ! append_comment_once "# Homebrew shellenv" "$target_file" ||
+       ! append_once "$shellenv_line" "$target_file"; then
+      jobs_update_record_failure "写入 Homebrew 环境配置：$target_file" 1
+      warn_echo "Homebrew 环境配置写入失败：$target_file"
+      return 1
+    fi
     success_echo "已确认 Homebrew 环境变量配置：${target_file}"
   done
 
-  eval "$($brew_bin shellenv)"
   hash -r 2>/dev/null || true
 }
 # 封装 require_brew_or_skip 对应的独立处理逻辑。
@@ -1377,40 +1535,61 @@ require_brew_or_skip() {
   local brew_bin=""
 
   if brew_bin="$(find_brew_bin)"; then
-    setup_brew_shellenv "$brew_bin"
+    setup_brew_shellenv "$brew_bin" || return $?
     return 0
   fi
 
-  warn_echo "未检测到 Homebrew，跳过当前更新项。请先运行 install.command 安装 Homebrew。"
+  jobs_update_record_skip "未检测到 Homebrew，跳过当前更新项。请先运行 install.command 安装 Homebrew。"
   return 1
 }
 # 执行对应的环境配置或同步处理。
 setup_fzf_shellenv() {
   if ! jobs_update_has brew; then
+    jobs_update_record_skip '未检测到 Homebrew，无法准备 fzf Shell 配置。'
     return 0
   fi
 
   local fzf_base=""
-  fzf_base="$(brew --prefix fzf 2>/dev/null || true)"
+  fzf_base="$(brew --prefix fzf 2>/dev/null)" || {
+    jobs_update_record_failure '读取 fzf 安装位置' 1
+    warn_echo '读取 fzf 安装位置失败，未写入 Shell 配置。'
+    return 1
+  }
 
   if [[ -n "$fzf_base" && -d "$fzf_base" ]]; then
-    append_comment_once "# fzf" "${HOME}/.zshrc"
-    append_once '[ -f "$(brew --prefix)/opt/fzf/shell/key-bindings.zsh" ] && source "$(brew --prefix)/opt/fzf/shell/key-bindings.zsh"' "${HOME}/.zshrc"
-    append_once '[ -f "$(brew --prefix)/opt/fzf/shell/completion.zsh" ] && source "$(brew --prefix)/opt/fzf/shell/completion.zsh"' "${HOME}/.zshrc"
+    if ! append_comment_once "# fzf" "${HOME}/.zshrc" ||
+       ! append_once '[ -f "$(brew --prefix)/opt/fzf/shell/key-bindings.zsh" ] && source "$(brew --prefix)/opt/fzf/shell/key-bindings.zsh"' "${HOME}/.zshrc" ||
+       ! append_once '[ -f "$(brew --prefix)/opt/fzf/shell/completion.zsh" ] && source "$(brew --prefix)/opt/fzf/shell/completion.zsh"' "${HOME}/.zshrc"; then
+      jobs_update_record_failure "写入 fzf Shell 配置：${HOME}/.zshrc" 1
+      warn_echo "fzf Shell 配置写入失败：${HOME}/.zshrc"
+      return 1
+    fi
     success_echo "已确认 fzf shell 配置：${HOME}/.zshrc"
+  else
+    jobs_update_record_failure "检查 fzf 安装目录：${fzf_base}" 1
+    warn_echo "fzf 安装目录不存在，未写入 Shell 配置：${fzf_base}"
+    return 1
   fi
 }
 # 检查当前运行条件是否满足后续流程要求。
 ensure_jenv_init() {
-  append_comment_once "# jenv" "${HOME}/.zshrc"
-  append_once 'export PATH="$HOME/.jenv/bin:$PATH"' "${HOME}/.zshrc"
-  append_once 'eval "$(jenv init -)"' "${HOME}/.zshrc"
+  if ! append_comment_once "# jenv" "${HOME}/.zshrc" ||
+     ! append_once 'export PATH="$HOME/.jenv/bin:$PATH"' "${HOME}/.zshrc" ||
+     ! append_once 'eval "$(jenv init -)"' "${HOME}/.zshrc"; then
+    jobs_update_record_failure "写入 jenv 初始化配置：${HOME}/.zshrc" 1
+    warn_echo "jenv 初始化配置写入失败：${HOME}/.zshrc"
+    return 1
+  fi
   success_echo "已确认 jenv 初始化配置：${HOME}/.zshrc"
 }
 # 检查当前运行条件是否满足后续流程要求。
 ensure_rbenv_init() {
-  append_comment_once "# rbenv" "${HOME}/.zshrc"
-  append_once 'eval "$(rbenv init - zsh)"' "${HOME}/.zshrc"
+  if ! append_comment_once "# rbenv" "${HOME}/.zshrc" ||
+     ! append_once 'eval "$(rbenv init - zsh)"' "${HOME}/.zshrc"; then
+    jobs_update_record_failure "写入 rbenv 初始化配置：${HOME}/.zshrc" 1
+    warn_echo "rbenv 初始化配置写入失败：${HOME}/.zshrc"
+    return 1
+  fi
   success_echo "已确认 rbenv 初始化配置：${HOME}/.zshrc"
 }
 # 封装 post_openjdk_hint 对应的独立处理逻辑。
@@ -1496,8 +1675,10 @@ jobs_update_run_flutter_android_licenses() {
   if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
     note_echo "$desc"
     debug_echo "执行命令：yes | ${license_cmd[*]}"
-    yes | "${license_cmd[@]}" 2>&1 | tee -a "$LOG_FILE"
-    local exit_code=${pipestatus[2]}
+    yes | "${license_cmd[@]}" 2>&1 | jobs_update_log_stream
+    local -a license_stage_codes=("${pipestatus[@]}")
+    local exit_code=${license_stage_codes[2]}
+    (( license_stage_codes[3] == 0 )) || exit_code=1
 
     if (( exit_code == 0 )); then
       success_echo "$desc：完成"
@@ -1509,7 +1690,7 @@ jobs_update_run_flutter_android_licenses() {
   fi
 
   if [[ ! -t 0 ]]; then
-    warn_echo "当前不是交互式终端，已跳过：$desc"
+    jobs_update_record_skip "当前不是交互式终端，无法接受许可：$desc"
     return 0
   fi
 
@@ -1522,38 +1703,48 @@ jobs_update_run_flutter_doctor_and_android_licenses() {
 
   local -a flutter_base_cmd=("$@")
   if (( ${#flutter_base_cmd[@]} == 0 )); then
-    warn_echo "未提供 Flutter 命令，跳过 Flutter doctor。"
-    return 0
+    warn_echo "未提供 Flutter 命令，无法执行 Flutter doctor。"
+    return 1
   fi
 
   local doctor_output_file=""
-  doctor_output_file="$(mktemp -t jobs_update_flutter_doctor.XXXXXX)"
+  doctor_output_file="$(mktemp -t jobs_update_flutter_doctor.XXXXXX)" || return 1
   local -a doctor_cmd=("${flutter_base_cmd[@]}" doctor -v)
   local -a license_cmd=("${flutter_base_cmd[@]}" doctor --android-licenses)
 
   note_echo "${label} doctor -v"
   debug_echo "执行命令：${doctor_cmd[*]}"
-  "${doctor_cmd[@]}" 2>&1 | tee -a "$LOG_FILE" | tee "$doctor_output_file"
-  local doctor_exit_code=${pipestatus[1]}
+  "${doctor_cmd[@]}" 2>&1 | jobs_update_log_stream "$doctor_output_file"
+  local -a doctor_stage_codes=("${pipestatus[@]}")
+  local doctor_exit_code=${doctor_stage_codes[1]}
+  (( doctor_stage_codes[2] == 0 )) || doctor_exit_code=1
 
+  if (( doctor_exit_code == 0 )) && jobs_update_output_has_failure "$doctor_output_file"; then
+    doctor_exit_code=1
+  fi
   if (( doctor_exit_code == 0 )); then
     success_echo "${label} doctor -v：完成"
   else
-    warn_echo "${label} doctor -v：返回非 0（${doctor_exit_code}），继续检查 Android license 提示。"
+    warn_echo "${label} doctor -v：失败（exit code: ${doctor_exit_code}）。"
   fi
 
   if grep -Eq "Android license status unknown|flutter doctor --android-licenses" "$doctor_output_file"; then
-    warn_echo "检测到 Android license status unknown，将执行：${license_cmd[*]}"
+    warn_echo '检测到 Android license status unknown。'
 
     if grep -Fq "cmdline-tools component is missing" "$doctor_output_file"; then
       warm_echo "doctor 同时提示 Android cmdline-tools 缺失；若许可接受失败，请先在 Android Studio 安装 Command-line Tools。"
     fi
 
-    jobs_update_run_flutter_android_licenses "接受 Android SDK licenses" "${license_cmd[@]}" || true
+    if (( doctor_exit_code == 0 )); then
+      info_echo "接受许可命令：${license_cmd[*]}"
+      jobs_update_run_flutter_android_licenses "接受 Android SDK licenses" "${license_cmd[@]}" || doctor_exit_code=$?
+    else
+      warn_echo 'doctor 未成功完成，跳过自动接受许可；请先解决网络或工具链错误。'
+    fi
   fi
 
   rm -f "$doctor_output_file"
-  return 0
+  return "$doctor_exit_code"
 }
 # ---------- 内置自述 ----------
 jobs_update_show_readme_and_wait() {
@@ -1625,7 +1816,7 @@ EOFREADME
 日志路径：/tmp/update.log
 ============================================================
 EOFREADME
-  } | tee -a "$LOG_FILE" | jobs_intro_style auto
+  } | jobs_update_log_stream | jobs_intro_style auto
 
   if [[ -t 0 && "${JOBS_MAC_ENV_SKIP_README:-}" != "1" ]]; then
     echo "" | jobs_intro_style body
@@ -1636,7 +1827,7 @@ EOFREADME
 # ---------- 更新项：系统 / Xcode / Shell ----------
 jobs_update_clt() {
   if ! xcode-select -p >/dev/null 2>&1; then
-    warn_echo "未检测到 Xcode Command Line Tools。update.command 不负责安装，请运行 install.command 补装。"
+    jobs_update_record_skip "未检测到 Xcode Command Line Tools。update.command 不负责安装，请运行 install.command 补装。"
     return 0
   fi
 
@@ -1645,7 +1836,7 @@ jobs_update_clt() {
   if jobs_update_has xcodebuild; then
     jobs_update_run_sudo_cmd "接受 Xcode License" xcodebuild -license accept || true
   else
-    warn_echo "未检测到 xcodebuild，跳过 Xcode License 接受步骤"
+    jobs_update_record_skip "未检测到 xcodebuild，跳过 Xcode License 接受步骤"
   fi
 
   warn_echo "softwareupdate --install --all 可能安装 macOS 可用系统更新，耗时较长。"
@@ -1654,7 +1845,7 @@ jobs_update_clt() {
 # 封装 jobs_update_xcode_ios_platform 对应的独立处理逻辑。
 jobs_update_xcode_ios_platform() {
   if ! jobs_update_has xcodebuild; then
-    warn_echo "未检测到 xcodebuild，无法更新 Xcode iOS 平台组件。"
+    jobs_update_record_skip "未检测到 xcodebuild，无法更新 Xcode iOS 平台组件。"
     return 0
   fi
 
@@ -1668,19 +1859,56 @@ jobs_update_xcode_ios_platform() {
   jobs_update_run_sh "清理 CoreSimulator 缓存" 'rm -rf ~/Library/Developer/CoreSimulator/Caches' || true
   jobs_update_run_cmd "下载 / 更新 iOS 模拟器平台" xcodebuild -downloadPlatform iOS -verbose || true
 }
-# 封装 jobs_update_oh_my_zsh 对应的独立处理逻辑。
+# 展示来源时隐藏 URL 凭据与查询参数，不修改真实业务地址。
+jobs_update_redact_source() {
+  print -r -- "$1" | /usr/bin/sed -E 's#(://)[^/@]*@#\1***@#; s#[?#].*$##'
+}
+# 独立核对远端当前分支，避免官方升级脚本吞掉 Git 失败后误报成功。
+jobs_update_verify_git_current() {
+  local repo_dir="$1" fallback_remote="${2:-}" branch='' remote='' remote_ref='' remote_output='' remote_commit=''
+  branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD)" || {
+    print -u2 -r -- 'ERROR: 更新后处于游离 HEAD，无法确认跟踪分支。'
+    return 1
+  }
+  remote="$(git -C "$repo_dir" config --get "branch.${branch}.remote")" || remote="$fallback_remote"
+  remote_ref="$(git -C "$repo_dir" config --get "branch.${branch}.merge")" || remote_ref="refs/heads/${branch}"
+  if [[ -z "$remote" || "$remote" == . || "$remote_ref" != refs/heads/* ]]; then
+    print -u2 -r -- 'ERROR: 无法确认网络远端与跟踪分支，不能认定已更新。'
+    return 1
+  fi
+  remote_output="$(GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never git -C "$repo_dir" ls-remote --exit-code "$remote" "$remote_ref")" || {
+    print -u2 -r -- 'ERROR: 更新后无法读取远端分支，本次更新结果未能验证。'
+    return 1
+  }
+  remote_commit="$(print -r -- "$remote_output" | /usr/bin/awk -v ref="$remote_ref" '$2 == ref && $1 ~ /^[0-9a-f]+$/ && (length($1) == 40 || length($1) == 64) { count++; sha=$1 } END { if (count == 1) print sha }')"
+  if [[ -z "$remote_commit" ]] || ! git -C "$repo_dir" merge-base --is-ancestor "$remote_commit" HEAD; then
+    print -u2 -r -- 'ERROR: 本地 HEAD 尚未包含已核验的远端最新提交，更新未完成。'
+    return 1
+  fi
+  print -r -- "已核验远端 ${remote}/${remote_ref#refs/heads/}：${remote_commit}，当前 HEAD 已包含该提交。"
+}
+# 保留官方升级流程并验证远端；整个过程只在验证完成后报告成功。
+jobs_update_upgrade_oh_my_zsh() {
+  local zsh_dir="$1"
+  GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never ZSH="$zsh_dir" /bin/zsh "$zsh_dir/tools/upgrade.sh" || return $?
+  jobs_update_verify_git_current "$zsh_dir" origin
+}
+# 更新既有 Oh My Zsh，缺少目录或官方入口时明确跳过。
 jobs_update_oh_my_zsh() {
-  if [[ ! -d "${HOME}/.oh-my-zsh" ]]; then
-    warn_echo "未检测到 Oh My Zsh。update.command 不负责安装，请运行 install.command 补装。"
+  local zsh_dir="${ZSH:-${HOME}/.oh-my-zsh}" source_url=''
+  if [[ ! -d "$zsh_dir" ]]; then
+    jobs_update_record_skip "未检测到 Oh My Zsh：${zsh_dir}；请运行 install.command 补装。"
     return 0
   fi
 
-  success_echo "Oh My Zsh 已存在：${HOME}/.oh-my-zsh"
+  info_echo "Oh My Zsh 已存在：${zsh_dir}"
 
-  if [[ -f "${HOME}/.oh-my-zsh/tools/upgrade.sh" ]]; then
-    jobs_update_run_sh "更新 Oh My Zsh" "ZSH='${HOME}/.oh-my-zsh' '${HOME}/.oh-my-zsh/tools/upgrade.sh'" || true
+  if [[ -f "$zsh_dir/tools/upgrade.sh" ]]; then
+    source_url="$(git -C "$zsh_dir" remote get-url origin 2>/dev/null)" || source_url='无法读取 origin 地址'
+    info_echo "来源｜Oh My Zsh：$(jobs_update_redact_source "$source_url") → ${zsh_dir}"
+    jobs_update_run_cmd "更新并核验 Oh My Zsh" jobs_update_upgrade_oh_my_zsh "$zsh_dir"
   else
-    warn_echo "未找到 Oh My Zsh upgrade.sh，跳过更新"
+    jobs_update_record_skip "未找到 Oh My Zsh 官方入口：${zsh_dir}/tools/upgrade.sh"
   fi
 }
 # 封装 jobs_update_rosetta 对应的独立处理逻辑。
@@ -1702,13 +1930,22 @@ jobs_update_homebrew() {
     return 0
   fi
 
-  jobs_update_trust_configured_brew_taps
-  jobs_update_run_brew_update || true
-  jobs_update_run_brew_upgrade || true
-  jobs_update_run_brew_cask_upgrade || true
-  jobs_update_run_cmd "brew cleanup（清理旧版本缓存）" brew cleanup || true
-  jobs_update_run_cmd "brew doctor（检查 Homebrew 健康状态）" brew doctor || true
-  jobs_update_run_cmd "brew -v（输出 Homebrew 版本）" brew -v || true
+  local result=0
+  jobs_update_trust_configured_brew_taps || result=1
+  if ! jobs_update_run_brew_update; then
+    warn_echo "Homebrew 本体或索引未更新，停止本组升级并保留下载缓存。"
+    return 1
+  fi
+  jobs_update_run_brew_upgrade || result=1
+  jobs_update_run_brew_cask_upgrade || result=1
+  if (( result == 0 )); then
+    jobs_update_run_cmd "brew cleanup（清理旧版本缓存）" brew cleanup || result=1
+  else
+    warn_echo "部分升级未完成，跳过 brew cleanup，保留已安装版本及下载缓存供重试。"
+  fi
+  jobs_update_run_cmd "brew doctor（检查 Homebrew 健康状态）" brew doctor || result=1
+  jobs_update_run_cmd "brew -v（输出 Homebrew 版本）" brew -v || result=1
+  return "$result"
 }
 # 封装 brew_formula_install_arg 对应的独立处理逻辑。
 brew_formula_install_arg() {
@@ -1813,22 +2050,30 @@ jobs_update_github_store_after_update() {
 }
 # 仅在 Dart 通过 Flutter 官方签名校验后，解除 Homebrew Cask 传播到 Flutter SDK 的隔离标记。
 jobs_update_flutter_release_verified_quarantine() {
-  local flutter_command=""
+  local flutter_command="${1:-}"
   local flutter_root=""
   local dart_binary=""
   local signature_info=""
   local remaining_quarantine=""
+  local cleanup_failed=0 quarantined_link=''
+  local -a quarantined_links=()
 
-  flutter_command="$(command -v flutter 2>/dev/null || true)"
-  [[ -n "$flutter_command" ]] || return 0
+  [[ -n "$flutter_command" ]] || flutter_command="$(jobs_update_find_external_command flutter 2>/dev/null || true)"
+  if [[ -z "$flutter_command" ]]; then
+    jobs_update_record_skip '未找到明确 Flutter 命令，无法检查该 SDK 的 quarantine 标记。'
+    return 0
+  fi
 
-  flutter_command="$(realpath "$flutter_command" 2>/dev/null || true)"
-  [[ -n "$flutter_command" && -f "$flutter_command" ]] || return 0
+  flutter_command="${flutter_command:A}"
+  if [[ ! -f "$flutter_command" ]]; then
+    warn_echo "Flutter 命令路径无效，无法检查 SDK 隔离标记：$flutter_command。"
+    return 1
+  fi
 
   flutter_root="$(cd "$(dirname "$flutter_command")/.." 2>/dev/null && pwd -P || true)"
   dart_binary="${flutter_root}/bin/cache/dart-sdk/bin/dart"
   if [[ ! -x "$dart_binary" ]]; then
-    warn_echo "未找到 Flutter SDK 内的 Dart 二进制文件，跳过 quarantine 标记清理。"
+    jobs_update_record_skip "未找到 Flutter SDK 内的 Dart 二进制文件，跳过 quarantine 标记清理。"
     return 0
   fi
 
@@ -1843,20 +2088,34 @@ jobs_update_flutter_release_verified_quarantine() {
     return 1
   fi
 
-  if ! find "$flutter_root" -xattrname com.apple.quarantine -print -quit 2>/dev/null | grep -Fq '/'; then
+  if ! remaining_quarantine="$(find "$flutter_root" -xattrname com.apple.quarantine -print -quit 2>/dev/null)"; then
+    warn_echo "Flutter SDK quarantine 查询失败，无法确认当前隔离状态：$flutter_root。"
+    return 1
+  fi
+  if [[ -z "$remaining_quarantine" ]]; then
     success_echo "Flutter SDK 无 quarantine 标记，无需处理。"
     return 0
   fi
 
-  /usr/bin/xattr -dr com.apple.quarantine "$flutter_root" 2>/dev/null || true
-  find "$flutter_root" -type l -xattrname com.apple.quarantine -print0 2>/dev/null |
-    while IFS= read -r -d '' quarantined_link; do
-      /usr/bin/xattr -d -s com.apple.quarantine "$quarantined_link" 2>/dev/null || true
-    done
-  remaining_quarantine="$(find "$flutter_root" -xattrname com.apple.quarantine -print -quit 2>/dev/null || true)"
+  /usr/bin/xattr -dr com.apple.quarantine "$flutter_root" 2>/dev/null || cleanup_failed=1
+  if ! quarantined_links=("${(@0)$(find "$flutter_root" -type l -xattrname com.apple.quarantine -print0 2>/dev/null)}"); then
+    warn_echo 'Flutter SDK 隔离标记链接查询失败，无法完成清理复检。'
+    return 1
+  fi
+  for quarantined_link in "${quarantined_links[@]}"; do
+    [[ -n "$quarantined_link" ]] || continue
+    /usr/bin/xattr -d -s com.apple.quarantine "$quarantined_link" 2>/dev/null || cleanup_failed=1
+  done
+  if ! remaining_quarantine="$(find "$flutter_root" -xattrname com.apple.quarantine -print -quit 2>/dev/null)"; then
+    warn_echo 'Flutter SDK 清理后查询失败，无法确认隔离标记已解除。'
+    return 1
+  fi
   if [[ -n "$remaining_quarantine" ]]; then
     warn_echo "Flutter SDK 仍存在 quarantine 标记：${remaining_quarantine}"
     return 1
+  fi
+  if (( cleanup_failed != 0 )); then
+    info_echo 'xattr 清理曾返回非零，最终遍历复检已确认隔离标记全部解除。'
   fi
 
   success_echo "已验证 FLUTTER.IO LLC 官方签名，并解除 Flutter SDK quarantine 标记。"
@@ -1866,7 +2125,7 @@ brew_cask_after_update() {
   local cask_name="$1"
 
   case "$cask_name" in
-    flutter) jobs_update_flutter_release_verified_quarantine || true ;;
+    flutter) jobs_update_flutter_release_verified_quarantine ;;
     github-store) jobs_update_github_store_after_update ;;
     *) return 0 ;;
   esac
@@ -1897,33 +2156,36 @@ jobs_update_brew_formula_one() {
   if ! require_brew_or_skip; then
     return 0
   fi
+  jobs_update_run_brew_update || return $?
 
   install_arg="$(brew_formula_install_arg "$formula_name")"
   tap_name="$(brew_formula_tap_name "$formula_name")"
 
   if ! brew list --formula --versions "$formula_name" >/dev/null 2>&1; then
-    warn_echo "未安装 brew formula：${formula_name}，跳过升级。请运行 install.command 补装。"
+    jobs_update_record_skip "未安装 brew formula：${formula_name}，跳过升级。请运行 install.command 补装。"
     return 0
   fi
 
   if [[ -n "$tap_name" ]]; then
-    brew_trust_tap_if_required "$tap_name"
-    jobs_update_run_cmd "确认 Homebrew Tap：${tap_name}" brew tap "$tap_name" || true
+    brew_trust_tap_if_required "$tap_name" || return $?
+    jobs_update_run_cmd "确认 Homebrew Tap：${tap_name}" brew tap "$tap_name" || return $?
   fi
 
-  if jobs_update_run_brew_adaptive_cmd "升级 brew formula：${formula_name}" plain brew upgrade "$install_arg"; then
-    [[ "$formula_name" == cocoapods ]] && JOBS_UPDATE_COCOAPODS_BREW_UPDATED=1
-  fi
+  jobs_update_run_brew_adaptive_cmd "升级 brew formula：${formula_name}" plain brew upgrade "$install_arg" || return $?
+  [[ "$formula_name" != cocoapods ]] || JOBS_UPDATE_COCOAPODS_BREW_UPDATED=1
   brew_formula_after_update "$formula_name"
 }
 # 封装 jobs_update_brew_formulae 对应的独立处理逻辑。
 jobs_update_brew_formulae() {
-  local pkg
+  local pkg result=0
+  require_brew_or_skip || return 0
+  jobs_update_run_brew_update || return $?
   for pkg in "${BREW_FORMULAE[@]}"; do
     echo ""
     highlight_echo "brew formula：${pkg}"
-    jobs_update_brew_formula_one "$pkg"
+    jobs_update_brew_formula_one "$pkg" || result=1
   done
+  return "$result"
 }
 # 封装 jobs_update_brew_cask_one 对应的独立处理逻辑。
 jobs_update_brew_cask_one() {
@@ -1933,11 +2195,12 @@ jobs_update_brew_cask_one() {
   if ! require_brew_or_skip; then
     return 0
   fi
+  jobs_update_run_brew_update || return $?
 
   tap_name="$(brew_cask_tap_name "$cask_name")"
   if [[ -n "$tap_name" ]]; then
-    brew_trust_tap_if_required "$tap_name"
-    jobs_update_run_cmd "确认 Homebrew Tap：${tap_name}" brew tap "$tap_name" || true
+    brew_trust_tap_if_required "$tap_name" || return $?
+    jobs_update_run_cmd "确认 Homebrew Tap：${tap_name}" brew tap "$tap_name" || return $?
   fi
 
   if ! brew list --cask --versions "$cask_name" >/dev/null 2>&1; then
@@ -1945,48 +2208,82 @@ jobs_update_brew_cask_one() {
       local app_path=""
       app_path="$(brew_cask_local_app_path "$cask_name")"
       success_echo "已检测到本机 App：${app_path}"
-      warn_echo "Homebrew 未登记 brew cask：${cask_name}，但本机已有 App，跳过升级。"
+      jobs_update_record_skip "Homebrew 未登记 brew cask：${cask_name}，但本机已有 App，跳过升级。"
       return 0
     fi
 
-    warn_echo "未安装 brew cask：${cask_name}，跳过升级。请运行 install.command 补装。"
+    jobs_update_record_skip "未安装 brew cask：${cask_name}，跳过升级。请运行 install.command 补装。"
     brew_cask_install_hint "$cask_name"
     return 0
   fi
 
-  jobs_update_run_brew_adaptive_cmd "升级 brew cask：${cask_name}" plain brew upgrade --cask "$cask_name" || true
+  jobs_update_run_brew_adaptive_cmd "升级 brew cask：${cask_name}" plain brew upgrade --cask "$cask_name" || return $?
   brew_cask_after_update "$cask_name"
 }
 # 封装 jobs_update_brew_casks 对应的独立处理逻辑。
 jobs_update_brew_casks() {
-  local pkg
+  local pkg result=0
+  require_brew_or_skip || return 0
+  jobs_update_run_brew_update || return $?
   for pkg in "${BREW_CASKS[@]}"; do
     echo ""
     highlight_echo "brew cask：${pkg}"
-    jobs_update_brew_cask_one "$pkg"
+    jobs_update_brew_cask_one "$pkg" || result=1
   done
+  return "$result"
 }
-# ---------- 更新项：语言 / 包管理 ----------
+# 判断真实 SDK 是否位于 FVM 缓存；只允许频道缓存原地升级。
+jobs_update_flutter_is_pinned_fvm_sdk() {
+  local flutter_path="$1" sdk_root="${${1:A}:h:h}" cache_root='' cache_name=''
+  local -a cache_roots=("${FVM_CACHE_PATH:-${FVM_HOME:-$HOME/fvm}}" "$HOME/fvm" "$HOME/.fvm")
+  for cache_root in "${cache_roots[@]}"; do
+    if [[ "$sdk_root" == "${cache_root:A}/versions/"* ]]; then
+      cache_name="${sdk_root#${cache_root:A}/versions/}"
+      break
+    fi
+  done
+  if [[ -z "$cache_name" && ( "$flutter_path" == */.fvm/flutter_sdk/bin/flutter || "$flutter_path" == */fvm/default/bin/flutter || "$flutter_path" == "${FVM_CACHE_PATH:-$HOME/fvm}/default/bin/flutter" ) ]]; then
+    cache_name="${sdk_root:t}"
+  fi
+  [[ -n "$cache_name" ]] || return 1
+  case "$cache_name" in
+    stable|beta|main|master) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+# 更新 FVM 和可原地升级的 SDK，固定版本缓存保留原有 pin。
 jobs_update_fvm_flutter() {
-  local external_flutter=""
+  local external_flutter="" result=0 upgrade_result=0
 
   if jobs_update_has brew && brew list --formula fvm >/dev/null 2>&1; then
-    jobs_update_brew_formula_one fvm
+    jobs_update_brew_formula_one fvm || result=1
   elif jobs_update_has dart; then
-    jobs_update_run_cmd "升级 FVM（Dart pub global）" dart pub global activate fvm || true
+    jobs_update_run_cmd "升级 FVM（Dart pub global）" dart pub global activate fvm || result=1
   else
-    warn_echo "未检测到 brew formula fvm 或 dart，跳过 FVM 更新"
+    jobs_update_record_skip "未检测到 brew formula fvm 或 dart，跳过 FVM 更新"
   fi
 
   if external_flutter="$(jobs_update_find_external_command flutter 2>/dev/null)"; then
-    jobs_update_run_cmd "Flutter upgrade" "$external_flutter" upgrade || true
-    jobs_update_flutter_release_verified_quarantine || true
-    jobs_update_run_flutter_doctor_and_android_licenses "Flutter" "$external_flutter" || true
+    if jobs_update_flutter_is_pinned_fvm_sdk "$external_flutter"; then
+      jobs_update_record_skip "Flutter SDK 升级：FVM 固定版本缓存 ${${external_flutter:A}:h:h}。"
+      warm_echo '需要新版时先执行 fvm install <新版本>，确认后用 fvm global <新版本> 或项目内 fvm use <新版本> 切换；本次保留原 pin。'
+      return "$result"
+    fi
+    jobs_update_run_cmd "Flutter upgrade" "$external_flutter" upgrade || upgrade_result=$?
+    if (( upgrade_result != 0 )); then
+      warn_echo 'Flutter upgrade 未完成，跳过 SDK 隔离标记处理和 doctor；网络恢复后重新运行该更新项。'
+      return "$upgrade_result"
+    fi
+    jobs_update_flutter_release_verified_quarantine "$external_flutter" || result=1
+    jobs_update_run_flutter_doctor_and_android_licenses "Flutter" "$external_flutter" || result=1
   elif jobs_update_has fvm; then
-    jobs_update_run_flutter_doctor_and_android_licenses "FVM Flutter" fvm flutter || true
+    jobs_update_record_skip '当前 PATH 没有明确 Flutter SDK；仅检测到 FVM，不隐式选择项目或下载其它 SDK。'
+    warm_echo '请通过 fvm global <版本> 配置默认 SDK，并将该 SDK 的 bin 加入 PATH 后重试。'
+    result=1
   else
-    warn_echo "未检测到外部 flutter / fvm，跳过 Flutter SDK 更新"
+    jobs_update_record_skip "未检测到外部 flutter / fvm，跳过 Flutter SDK 更新"
   fi
+  return "$result"
 }
 # 封装 jobs_update_node_base 对应的独立处理逻辑。
 jobs_update_node_base() {
@@ -2000,7 +2297,7 @@ jobs_update_node_base() {
     success_echo "检测到 Node：$(node --version 2>/dev/null || true)"
     warn_echo "未检测到 nvm；Node 版本升级已由 Homebrew formula：node 更新项负责。"
   else
-    warn_echo "未检测到 node / nvm，跳过 Node 基础维护"
+    jobs_update_record_skip "未检测到 node / nvm，跳过 Node 基础维护"
   fi
 
   if jobs_update_has corepack; then
@@ -2015,31 +2312,31 @@ jobs_update_node_base() {
 # 封装 jobs_update_npm_quicktype 对应的独立处理逻辑。
 jobs_update_npm_quicktype() {
   if ! jobs_update_has npm; then
-    warn_echo "npm 不存在，无法更新 quicktype。请先运行 install.command 安装 node。"
+    jobs_update_record_skip "npm 不存在，无法更新 quicktype。请先运行 install.command 安装 node。"
     return 0
   fi
 
   if npm list -g quicktype --depth=0 >/dev/null 2>&1; then
     jobs_update_run_npm_global_cmd "更新 npm 全局包 quicktype" "quicktype" update -g quicktype || true
   else
-    warn_echo "未检测到 npm 全局包 quicktype，跳过升级。请运行 install.command 补装。"
+    jobs_update_record_skip "未检测到 npm 全局包 quicktype，跳过升级。请运行 install.command 补装。"
   fi
 }
 # 封装 jobs_update_npm_opencli 对应的独立处理逻辑。
 jobs_update_npm_opencli() {
   if ! jobs_update_has npm; then
-    warn_echo "npm 不存在，无法更新 OpenCLI。请先运行 install.command 安装 node。"
+    jobs_update_record_skip "npm 不存在，无法更新 OpenCLI。请先运行 install.command 安装 node。"
     return 0
   fi
 
   if ! ensure_node_for_opencli; then
-    return 0
+    return 1
   fi
 
   if npm list -g @jackwener/opencli --depth=0 >/dev/null 2>&1; then
     jobs_update_run_npm_global_cmd "更新 npm 全局包 OpenCLI" "@jackwener/opencli" install -g @jackwener/opencli@latest || true
   else
-    warn_echo "未检测到 npm 全局包 OpenCLI，跳过升级。请运行 install.command 补装。"
+    jobs_update_record_skip "未检测到 npm 全局包 OpenCLI，跳过升级。请运行 install.command 补装。"
   fi
 
   if jobs_update_has opencli; then
@@ -2052,7 +2349,7 @@ jobs_update_npm_opencli() {
 # 封装 jobs_update_npm_codegraph 对应的独立处理逻辑。
 jobs_update_npm_codegraph() {
   if ! jobs_update_has npm; then
-    warn_echo "npm 不存在，无法更新 CodeGraph。请先运行 install.command 安装 node。"
+    jobs_update_record_skip "npm 不存在，无法更新 CodeGraph。请先运行 install.command 安装 node。"
     return 0
   fi
 
@@ -2062,7 +2359,7 @@ jobs_update_npm_codegraph() {
     warn_echo "检测到 codegraph 命令，但未检测到 npm 全局包 @colbymchenry/codegraph。"
     warm_echo "将尝试用 npm 接管并升级 CodeGraph；如果你想保留非 npm 安装方式，可跳过本项。"
   else
-    warn_echo "未检测到 npm 全局包 CodeGraph，跳过升级。请运行 install.command 补装。"
+    jobs_update_record_skip "未检测到 npm 全局包 CodeGraph，跳过升级。请运行 install.command 补装。"
     return 0
   fi
 
@@ -2302,25 +2599,134 @@ JOBS_GEMEXT_RUBY
 # <<< Jobs Gem extension repair <<<
 # 将原生扩展诊断同步写入 update 日志，并传播 worker 退出码。
 jobs_update_repair_gem_extensions() {
-  jobs_gemext_process repair 2>&1 | /usr/bin/tee -a "$LOG_FILE"
+  if [[ "${JOBS_UPDATE_COMMAND_LOG_ACTIVE:-0}" == 1 ]]; then
+    jobs_gemext_process repair 2>&1
+    return $?
+  fi
+  jobs_gemext_process repair 2>&1 | jobs_update_log_stream
   local -a stage_codes=("${pipestatus[@]}")
   (( stage_codes[1] == 0 )) || return "${stage_codes[1]}"
   return "${stage_codes[2]}"
 }
-# 封装 jobs_update_ruby_base 对应的独立处理逻辑。
+# 读取 gem 命令实际使用的 Ruby 和安装目录，避免把另一个 Ruby 的目录当作目标。
+jobs_update_gem_read_environment() {
+  local gem_environment=''
+  gem_environment="$(LC_ALL=C gem env 2>/dev/null)" || return 1
+  typeset -g JOBS_UPDATE_GEM_CURRENT_HOME="$(print -r -- "$gem_environment" | /usr/bin/sed -n 's/^[[:space:]]*- INSTALLATION DIRECTORY: //p')"
+  typeset -g JOBS_UPDATE_GEM_CURRENT_BIN="$(print -r -- "$gem_environment" | /usr/bin/sed -n 's/^[[:space:]]*- EXECUTABLE DIRECTORY: //p')"
+  typeset -g JOBS_UPDATE_GEM_CURRENT_RUBY="$(print -r -- "$gem_environment" | /usr/bin/sed -n 's/^[[:space:]]*- RUBY EXECUTABLE: //p')"
+  if [[ "$JOBS_UPDATE_GEM_CURRENT_HOME" != /* || "$JOBS_UPDATE_GEM_CURRENT_BIN" != /* || "$JOBS_UPDATE_GEM_CURRENT_RUBY" != /* ]]; then
+    warn_echo '无法从 gem env 确认安装目录、可执行目录和 Ruby，停止该 Gem 更新。'
+    return 1
+  fi
+}
+# 检查已有目标及缺失目标的最近父目录，不创建测试文件或修改权限。
+jobs_update_gem_path_writable() {
+  local target="$1" ancestor="$1" target_kind="${2:-directory}"
+  if [[ -e "$target" && "$target_kind" == directory && ! -d "$target" ]]; then
+    warn_echo "RubyGems 目录被普通文件占用：$target。"
+    return 1
+  fi
+  while [[ ! -e "$ancestor" && ! -L "$ancestor" && "$ancestor" != / ]]; do
+    ancestor="${ancestor:h}"
+  done
+  if [[ ! -w "$ancestor" || ( -d "$ancestor" && ! -x "$ancestor" ) ]]; then
+    warn_echo "RubyGems 写入目标不可写：$target（现有路径：$ancestor）。"
+    return 1
+  fi
+  [[ ! -L "$ancestor" || -e "$ancestor" ]]
+}
+# gem home 可写仍可能留下只读插件；提前覆盖安装器会写入的目录和插件文件。
+jobs_update_gem_write_targets_writable() {
+  local gem_home="$1" gem_bin="$2" boundary="${3:-}" target=''
+  for target in "$gem_home" "$gem_home/cache" "$gem_home/doc" "$gem_home/extensions" \
+    "$gem_home/gems" "$gem_home/specifications" "$gem_home/build_info" "$gem_home/plugins" "$gem_bin" \
+    "$gem_home"/plugins/*(N); do
+    if [[ -n "$boundary" && "${target:A}" != "${boundary:A}" && "${target:A}" != "${boundary:A}/"* ]]; then
+      warn_echo "用户 Gem 写入目标通过链接指向用户安装范围之外：$target。"
+      return 1
+    fi
+    if [[ "$target" == "$gem_home/plugins/"* && "$target" != "$gem_home/plugins" ]]; then
+      jobs_update_gem_path_writable "$target" file || return 1
+    else
+      jobs_update_gem_path_writable "$target" || return 1
+    fi
+  done
+}
+# 共享目录权限不完整时仅在当前 Ruby 已包含用户目录的前提下回退用户安装。
+jobs_update_gem_packages() {
+  local description="$1" gem_user_home='' gem_paths='' gem_path='' user_path_visible=0
+  shift
+  jobs_update_gem_read_environment || return 1
+  if jobs_update_gem_write_targets_writable "$JOBS_UPDATE_GEM_CURRENT_HOME" "$JOBS_UPDATE_GEM_CURRENT_BIN"; then
+    info_echo "Gem 更新范围：$JOBS_UPDATE_GEM_CURRENT_HOME；可执行目录：$JOBS_UPDATE_GEM_CURRENT_BIN。"
+    jobs_update_run_cmd "$description" gem update "$@" --no-user-install --install-dir "$JOBS_UPDATE_GEM_CURRENT_HOME" --bindir "$JOBS_UPDATE_GEM_CURRENT_BIN"
+    return $?
+  fi
+  gem_user_home="$(gem env user_gemhome 2>/dev/null)" || return 1
+  gem_paths="$(gem env path 2>/dev/null)" || return 1
+  if [[ "$gem_user_home" != /* || "${gem_user_home:A}" != "${HOME:A}/"* ]]; then
+    warn_echo 'RubyGems 用户安装目录未能确认位于当前用户 HOME 内，停止更新。'
+    return 1
+  fi
+  for gem_path in "${(@s.:.)gem_paths}"; do
+    [[ "${gem_path:A}" != "${gem_user_home:A}" ]] || user_path_visible=1
+  done
+  if (( user_path_visible == 0 )); then
+    warn_echo "当前 Ruby 的 GEM_PATH 不包含用户 Gem 目录：$gem_user_home；请先修复该 Ruby 的搜索路径。"
+    return 1
+  fi
+  jobs_update_gem_write_targets_writable "$gem_user_home" "$gem_user_home/bin" "$gem_user_home" || return 1
+  info_echo "Gem 更新回退到当前用户目录：$gem_user_home；可执行目录：$gem_user_home/bin。"
+  jobs_update_run_cmd "$description（用户目录）" gem update "$@" --user-install --bindir "$gem_user_home/bin" || return $?
+  gem_paths="$(gem env path 2>/dev/null)" || return 1
+  user_path_visible=0
+  for gem_path in "${(@s.:.)gem_paths}"; do
+    [[ "${gem_path:A}" != "${gem_user_home:A}" ]] || user_path_visible=1
+  done
+  if (( user_path_visible == 0 )); then
+    warn_echo "Gem 更新后当前 Ruby 无法搜索用户目录：$gem_user_home。"
+    return 1
+  fi
+  case ":$PATH:" in
+    *":$gem_user_home/bin:"*) ;;
+    *) export PATH="$PATH:$gem_user_home/bin" ;;
+  esac
+  rehash
+  info_echo '已复检当前 Ruby 用户 Gem 搜索路径，并将用户 bin 加入本次进程 PATH；已有命令保持原来源优先。'
+}
+# RubyGems 本体随系统 / Homebrew Ruby 管理；用户自管 Ruby 才在确认实际目标可写后更新。
+jobs_update_rubygems_system() {
+  local ruby_path='' site_directory=''
+  jobs_update_gem_read_environment || return 1
+  ruby_path="${JOBS_UPDATE_GEM_CURRENT_RUBY:A}"
+  case "$ruby_path" in
+    /usr/bin/ruby|/System/*|*/Cellar/ruby/*|*/Cellar/ruby@*/*)
+      info_echo "跳过 gem update --system：RubyGems 本体由该 Ruby 的系统 / Homebrew 安装管理（$ruby_path）。"
+      return 0
+      ;;
+  esac
+  site_directory="$("$ruby_path" --disable-gems -rrbconfig -e 'puts RbConfig::CONFIG.fetch("sitelibdir")' 2>/dev/null)" || return 1
+  [[ "$site_directory" == /* ]] || return 1
+  jobs_update_gem_path_writable "$site_directory" || return 1
+  jobs_update_gem_path_writable "$ruby_path" file || return 1
+  jobs_update_gem_write_targets_writable "$JOBS_UPDATE_GEM_CURRENT_HOME" "$JOBS_UPDATE_GEM_CURRENT_BIN" || return 1
+  jobs_update_run_cmd 'gem update --system' gem update --system
+}
+# 更新 RubyGems 和 Gem，并保留每个子步骤的失败状态。
 jobs_update_ruby_base() {
   local result=0
   if jobs_update_has rbenv; then
-    ensure_rbenv_init
-    jobs_update_run_cmd "rbenv rehash" rbenv rehash || true
+    ensure_rbenv_init || result=1
+    jobs_update_run_cmd "rbenv rehash" rbenv rehash || result=1
   fi
 
   jobs_update_run_cmd '修复当前 CocoaPods / Ruby 缺失的原生 Gem 扩展' jobs_update_repair_gem_extensions || result=1
   if jobs_update_has gem; then
-    jobs_update_run_cmd "gem update --system" gem update --system || true
-    jobs_update_run_cmd "gem update" gem update || true
+    jobs_update_rubygems_system || result=1
+    jobs_update_gem_packages 'gem update' || result=1
   else
-    warn_echo "未检测到 gem，跳过 RubyGems 更新"
+    jobs_update_record_skip "未检测到 gem，跳过 RubyGems 更新"
   fi
   jobs_update_run_cmd '复检更新后的原生 Gem 扩展' jobs_update_repair_gem_extensions || result=1
   return "$result"
@@ -2898,7 +3304,7 @@ jobs_update_cocoapods_repos() (
 )
 # 按已安装的包管理器更新 CocoaPods，再独立按网络实测刷新公共规格源。
 jobs_update_gem_cocoapods() {
-  local gem_home='' brew_bin='' brew_prefix='' pod_bin='' result=0 brew_managed=0 gem_installed=0
+  local brew_bin='' brew_prefix='' pod_bin='' result=0 brew_managed=0 gem_installed=0
   pod_bin="$(whence -p pod 2>/dev/null)" || pod_bin=''
   if jobs_update_has gem && gem list -i '^cocoapods$' >/dev/null 2>&1; then
     gem_installed=1
@@ -2916,6 +3322,9 @@ jobs_update_gem_cocoapods() {
   if (( brew_managed == 1 )); then
     if (( JOBS_UPDATE_COCOAPODS_BREW_UPDATED == 1 )); then
       info_echo 'CocoaPods 已在本轮 Homebrew formula 阶段升级，继续维护规格源。'
+    elif ! jobs_update_run_brew_update "$brew_bin"; then
+      warn_echo 'Homebrew 索引尚未成功更新，跳过 CocoaPods 本体升级，继续检查独立 Specs 源。'
+      result=1
     elif jobs_update_run_brew_adaptive_cmd '升级 Homebrew CocoaPods' plain "$brew_bin" upgrade cocoapods; then
       JOBS_UPDATE_COCOAPODS_BREW_UPDATED=1
     else
@@ -2923,12 +3332,7 @@ jobs_update_gem_cocoapods() {
     fi
   fi
   if (( brew_managed == 0 && gem_installed == 1 )); then
-    gem_home="$(gem env home 2>/dev/null || true)"
-    if [[ -n "$gem_home" && -w "$gem_home" ]]; then
-      jobs_update_run_cmd "更新 gem 包 cocoapods" gem update cocoapods || result=1
-    else
-      jobs_update_run_sudo_cmd "更新系统 gem 包 cocoapods" gem update cocoapods || result=1
-    fi
+    jobs_update_gem_packages '更新 gem 包 cocoapods' cocoapods || result=1
   elif (( brew_managed == 0 && result == 0 )); then
     warn_echo '当前 Homebrew / RubyGems 未登记 CocoaPods，跳过工具升级；已有 pod 命令仍可维护规格源。'
   fi
@@ -2947,12 +3351,17 @@ jobs_update_gem_cocoapods() {
 }
 # 封装 jobs_update_python_base 对应的独立处理逻辑。
 jobs_update_python_base() {
-  jobs_envupdate_python_preflight confirmed || return 1 # Python 更新项获确认后准备内嵌运行时。
+  if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
+    local _JOBS_PYTHON_CONFIRMED_PROCESS=''
+    jobs_envupdate_python_preflight readonly || return 1
+  else
+    jobs_envupdate_python_preflight confirmed || return 1
+  fi
   if jobs_update_has pyenv; then
     if pyenv commands | grep -qx update; then
       jobs_update_run_cmd "pyenv update" pyenv update || true
     else
-      warn_echo "pyenv-update 插件不存在，跳过 pyenv update"
+      jobs_update_record_skip "pyenv-update 插件不存在，跳过 pyenv update"
     fi
     jobs_update_run_cmd "pyenv rehash" pyenv rehash || true
   fi
@@ -2961,26 +3370,45 @@ jobs_update_python_base() {
     jobs_update_run_cmd "pipx upgrade-all" pipx upgrade-all || true
   fi
 
-  jobs_update_run_cmd "Homebrew Python pip 自升级" "$JOBS_PYTHON_BIN" -m pip install --upgrade pip || true
+  local managed_marker=''
+  managed_marker="$("$JOBS_PYTHON_BIN" -c 'import pathlib, sys, sysconfig; marker = pathlib.Path(sysconfig.get_path("stdlib")) / "EXTERNALLY-MANAGED"; print(str(marker) if sys.prefix == sys.base_prefix and marker.is_file() else "")')" || return 1
+  if [[ -n "$managed_marker" ]]; then
+    info_echo '该 Python 的 pip 由 Homebrew 管理，随 Homebrew Python 公式升级；本项校验其可用版本。'
+    jobs_update_run_cmd "检查 Homebrew Python pip 版本" "$JOBS_PYTHON_BIN" -m pip --version
+  else
+    jobs_update_run_cmd "Python pip 自升级" "$JOBS_PYTHON_BIN" -m pip install --upgrade pip
+  fi
 }
 # 封装 jobs_update_pub_cache 对应的独立处理逻辑。
 jobs_update_pub_cache() {
   if jobs_update_has dart; then
-    jobs_update_run_cmd "Dart pub global list" dart pub global list || true
-    jobs_update_run_cmd "Dart pub cache repair" dart pub cache repair || true
+    local repair_help='' result=0
+    jobs_update_run_cmd "Dart pub global list" dart pub global list || result=1
+    if ! repair_help="$(dart pub cache repair --help 2>&1)"; then
+      print -r -- "$repair_help" | jobs_update_log_stream
+      jobs_update_record_failure '读取 Dart pub cache repair 参数' 1
+      warn_echo '无法读取 Dart 缓存修复参数，停止本次修复。'
+      return 1
+    fi
+    if print -r -- "$repair_help" | /usr/bin/grep -Eq -- '(^|[[:space:]])--all([[:space:]=,]|$)'; then
+      jobs_update_run_cmd "Dart pub cache repair --all" dart pub cache repair --all || result=1
+    else
+      jobs_update_run_cmd "Dart pub cache repair" dart pub cache repair || result=1
+    fi
+    return "$result"
   else
-    warn_echo "未检测到 dart，跳过 Dart pub cache 更新"
+    jobs_update_record_skip "未检测到 dart，无法修复 Dart pub 缓存"
   fi
 }
 # ---------- 更新项：Git / JobsKits / 手动下载页 ----------
 jobs_update_git_lfs_init() {
   if ! jobs_update_has git; then
-    warn_echo "git 不存在，无法刷新 Git LFS。请先安装 Xcode Command Line Tools 或 git。"
+    jobs_update_record_skip "git 不存在，无法刷新 Git LFS。请先安装 Xcode Command Line Tools 或 git。"
     return 0
   fi
 
   if ! git lfs version >/dev/null 2>&1; then
-    warn_echo "git-lfs 不存在，无法初始化。请先运行 install.command 安装 brew formula：git-lfs。"
+    jobs_update_record_skip "git-lfs 不存在，无法初始化。请先运行 install.command 安装 brew formula：git-lfs。"
     return 0
   fi
 
@@ -2994,19 +3422,37 @@ jobs_update_repo() {
   local repo_url="$2"
   local target_dir="$3"
 
-  if [[ -d "${target_dir}/.git" ]]; then
-    jobs_update_run_sh "更新仓库：${repo_name}" "cd '${target_dir}' && git pull --ff-only" || true
-    return 0
+  local source_url=''
+  if [[ -e "${target_dir}/.git" ]] && git -C "$target_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    local branch='' remote=''
+    branch="$(git -C "$target_dir" symbolic-ref --quiet --short HEAD)" || branch=''
+    if [[ -n "$branch" ]]; then
+      remote="$(git -C "$target_dir" config --get "branch.${branch}.remote")" || remote=''
+    fi
+    if [[ -n "$remote" ]]; then
+      source_url="$(git -C "$target_dir" remote get-url "$remote" 2>/dev/null)" || source_url='无法读取当前上游地址'
+    else
+      source_url='未配置当前分支的上游远端'
+    fi
+    info_echo "来源｜${repo_name}：$(jobs_update_redact_source "$source_url") → ${target_dir}"
+    jobs_update_run_cmd "更新并核验仓库：${repo_name}" jobs_update_pull_repo "$target_dir"
+    return $?
   fi
 
-  warn_echo "未检测到仓库：${target_dir}"
+  jobs_update_record_skip "未检测到有效仓库：${target_dir}"
   warm_echo "update.command 不负责克隆新仓库。需要补装时请运行 install.command。"
   gray_echo "仓库地址：${repo_url}"
+}
+# 使用参数传递目录，兼容空格和单引号，并验证实际远端最新提交。
+jobs_update_pull_repo() {
+  local target_dir="$1"
+  GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never git -C "$target_dir" pull --ff-only || return $?
+  jobs_update_verify_git_current "$target_dir"
 }
 # 封装 jobs_update_jobs_repos 对应的独立处理逻辑。
 jobs_update_jobs_repos() {
   if ! jobs_update_has git; then
-    warn_echo "git 不存在，跳过 JobsKits 仓库更新。"
+    jobs_update_record_skip "git 不存在，无法更新 JobsKits 仓库。"
     return 0
   fi
 
@@ -3025,7 +3471,7 @@ open_download_page() {
   local url="$2"
 
   if ! jobs_update_has open; then
-    warn_echo "open 命令不存在，无法打开：${name}"
+    jobs_update_record_skip "open 命令不存在，无法打开：${name}"
     return 0
   fi
 
@@ -3041,6 +3487,15 @@ jobs_update_manual_download_pages() {
 update() {
   local ran_count=0
   JOBS_UPDATE_COCOAPODS_BREW_UPDATED=0
+  JOBS_UPDATE_FAILURE_COUNT=0
+  JOBS_UPDATE_SKIP_COUNT=0
+  JOBS_UPDATE_COMMAND_COUNT=0
+  JOBS_UPDATE_FAILED_STEPS=0
+  JOBS_UPDATE_PARTIAL_STEPS=0
+  JOBS_UPDATE_SKIPPED_STEPS=0
+  JOBS_UPDATE_SUCCEEDED_STEPS=0
+  JOBS_UPDATE_FAILED_DESCRIPTIONS=()
+  JOBS_UPDATE_BREW_UPDATE_RESULTS=()
 
   if jobs_update_prompt_run "是否更新 Xcode Command Line Tools / macOS softwareupdate？" "对应 install.command：Xcode Command Line Tools。"; then
     jobs_update_run_step "Xcode Command Line Tools / softwareupdate 更新" jobs_update_clt
@@ -3141,14 +3596,44 @@ update() {
   print_divider
   if (( ran_count == 0 )); then
     warn_echo "没有执行任何更新项"
+  elif (( JOBS_UPDATE_FAILURE_COUNT > 0 )); then
+    warn_echo "update 执行结束：选择 ${ran_count} 项，完成 ${JOBS_UPDATE_SUCCEEDED_STEPS} 项，失败 ${JOBS_UPDATE_FAILED_STEPS} 项，部分执行 ${JOBS_UPDATE_PARTIAL_STEPS} 项，跳过 ${JOBS_UPDATE_SKIPPED_STEPS} 项。"
+    local failed_desc=''
+    for failed_desc in "${JOBS_UPDATE_FAILED_DESCRIPTIONS[@]}"; do
+      warn_echo "未完成：${failed_desc}"
+    done
+  elif (( JOBS_UPDATE_SKIP_COUNT > 0 )); then
+    warn_echo "update 执行结束：选择 ${ran_count} 项，完成 ${JOBS_UPDATE_SUCCEEDED_STEPS} 项，部分执行 ${JOBS_UPDATE_PARTIAL_STEPS} 项，跳过 ${JOBS_UPDATE_SKIPPED_STEPS} 项。"
   else
-    success_echo "update 执行完成，共执行 ${ran_count} 个更新项"
+    success_echo "update 执行完成，共完成 ${ran_count} 个更新项"
   fi
   info_echo "日志文件位置：${LOG_FILE}"
   print_divider
+  (( JOBS_UPDATE_FAILURE_COUNT == 0 && JOBS_UPDATE_SKIP_COUNT == 0 ))
 }
 # ---------- 主流程统一收口 ----------
+# 中断独立入口时只终止该脚本自己的子进程，随后回收本轮临时配置。
+jobs_update_abort_run() {
+  local interrupted_exit_code="${1:-130}" child_list='' child_id=''
+  [[ "${JOBS_MAC_ENV_SOURCE_MODE:-}" != 1 ]] || return "$interrupted_exit_code"
+  trap '' INT TERM
+  child_list="$(/bin/ps -axo pid=,ppid= | /usr/bin/awk -v parent="$$" '$2 == parent {print $1}')"
+  for child_id in "${(@f)child_list}"; do
+    [[ "$child_id" == <-> && "$child_id" -gt 1 && "$child_id" != "$$" ]] || continue
+    jobs_update_specs_terminate_tree "$child_id"
+    wait "$child_id" 2>/dev/null || true
+  done
+  jobs_update_cleanup_network_strategy
+  exit "$interrupted_exit_code"
+}
+# 安排独立入口的中断回收，并保留被调用环境原有的选项与信号处理。
 jobs_update_main() {
+  setopt LOCAL_OPTIONS LOCAL_TRAPS TRAPS_ASYNC
+  if [[ "${JOBS_MAC_ENV_SOURCE_MODE:-}" != 1 ]]; then
+    trap 'jobs_update_cleanup_network_strategy' EXIT
+    trap 'jobs_update_abort_run 130' INT
+    trap 'jobs_update_abort_run 143' TERM
+  fi
   # 展示脚本说明并等待用户确认影响范围。
   jobs_update_show_readme_and_wait
   # 执行更新或升级步骤，确保该动作不会被默认触发。
@@ -3160,37 +3645,69 @@ jobs_update_main() {
 }
 # 打印脚本内置自述，并按运行入口决定是否等待用户确认。
 show_script_intro_and_wait() {
-  if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
-    note_echo "托管模式：已跳过脚本内置自述确认。" | jobs_intro_style title
-    print -r -- "Python 环境：非交互只读自检；缺失时停止 Python 项，不替换系统环境。" | jobs_intro_style body
-    return 0
-  fi
-
-  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
-  print -r -- 'Python 环境：选中 Python 项后更新 Homebrew，版本不满足要求才安装或修复。' | jobs_intro_style body
-  print -r -- '脚本名称：update.command' | jobs_intro_style title
-  print -r -- '核心用途：执行“update”对应的自动化任务。' | jobs_intro_style body
-  print -r -- '影响范围：可能修改当前项目、用户环境或脚本指定的目标。' | jobs_intro_style body
-  print -r -- '取消方式：确认前按 Ctrl+C 终止，不会继续执行后续业务。' | jobs_intro_style body
-  print -r -- '============================================================================' | jobs_intro_style title
-  if [[ ! -t 0 ]]; then
-    print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
-    return 1
-  fi
-  read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _
-}
-# 统一收口脚本入口，仅委托已经拆分完成的业务流程。
-main() {
-  jobs_update_parse_args "$@" # 解析运行参数，识别托管模式或帮助请求。
+  JOBS_UPDATE_LOG_READY=0
+  JOBS_UPDATE_ENTRY_READY=0
+  JOBS_UPDATE_ENTRY_EXIT_CODE=0
+  JOBS_UPDATE_TRUST_MODE=0
+  jobs_update_parse_args "$@"
   local parse_exit_code=$?
   if (( parse_exit_code == 2 )); then
     return 0
   elif (( parse_exit_code != 0 )); then
-    return $parse_exit_code
+    JOBS_UPDATE_ENTRY_EXIT_CODE=$parse_exit_code
+    return 0
   fi
-  jobs_update_prepare_unattended_mode || return $? # 启用无人值守的非交互提权策略。
-  show_script_intro_and_wait || return $? # 展示脚本内置自述，并按运行入口完成防误触确认。
-  jobs_update_main "$@" || return $? # 执行 jobs_update_main 对应的核心业务步骤。
+  print -r -- '============================== 脚本内置自述 ==============================' | jobs_intro_style title
+  if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
+    print -r -- '运行策略：无人值守执行所有更新项；管理员命令只使用 sudo -n，无授权立即跳过。' | jobs_intro_style body
+    print -r -- 'Python 环境：只读自检；缺失时停止 Python 项，不替换系统环境。' | jobs_intro_style body
+  else
+    print -r -- 'Python 环境：选中 Python 项后更新 Homebrew，版本不满足要求才安装或修复。' | jobs_intro_style body
+  fi
+  print -r -- '脚本名称：update.command' | jobs_intro_style title
+  print -r -- '核心用途：按项维护 macOS 开发工具、语言运行时和已安装依赖。' | jobs_intro_style body
+  print -r -- '影响范围：所选工具、用户 Shell 配置、SDK、包缓存和既有 JobsKits 仓库。' | jobs_intro_style body
+  print -r -- "日志位置：${LOG_FILE}（确认后开始记录）。" | jobs_intro_style body
+  print -r -- '取消方式：按 Ctrl+C 终止；后续已完成的更新不会自动回滚。' | jobs_intro_style body
+  print -r -- '============================================================================' | jobs_intro_style title
+  if (( JOBS_UPDATE_TRUST_MODE == 1 )); then
+    JOBS_UPDATE_ENTRY_READY=1
+    return 0
+  fi
+  if [[ ! -t 0 ]]; then
+    print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
+    JOBS_UPDATE_ENTRY_EXIT_CODE=1
+    return 0
+  fi
+  if ! read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _; then
+    print -u2 -r -- '输入已取消或结束；未执行业务，原日志保持不变。'
+    JOBS_UPDATE_ENTRY_EXIT_CODE=1
+    return 0
+  fi
+  JOBS_UPDATE_ENTRY_READY=1
+}
+# 确认后才初始化本轮日志和运行策略，帮助、取消与错误入口均不写文件。
+jobs_update_prepare_confirmed_run() {
+  (( JOBS_UPDATE_ENTRY_READY == 1 )) || return 0
+  if ! : > "$LOG_FILE"; then
+    print -u2 -r -- "无法初始化日志：$LOG_FILE；未执行更新。"
+    JOBS_UPDATE_ENTRY_READY=0
+    JOBS_UPDATE_ENTRY_EXIT_CODE=1
+    return 0
+  fi
+  JOBS_UPDATE_LOG_READY=1
+  jobs_update_prepare_unattended_mode
+}
+# 按入口门禁执行更新并保留实际退出码；未确认入口直接返回解析或取消结果。
+jobs_update_run_confirmed_flow() {
+  (( JOBS_UPDATE_ENTRY_READY == 1 )) || return "$JOBS_UPDATE_ENTRY_EXIT_CODE"
+  jobs_update_main "$@"
+}
+# 编排只读自述、确认后的初始化和实际更新流程。
+main() {
+  show_script_intro_and_wait "$@" # 只读解析参数、展示内置自述，并完成防误触确认。
+  jobs_update_prepare_confirmed_run # 确认后初始化日志及无人值守策略。
+  jobs_update_run_confirmed_flow "$@" # 按确认门禁执行更新并传播最终退出码。
 }
 # 初始化脚本运行环境，并集中承载原有的顶层执行逻辑。
 initialize_script_module() {
@@ -3198,7 +3715,6 @@ initialize_script_module() {
   set -o pipefail
   setopt NO_NOMATCH
   if [[ "${JOBS_MAC_ENV_SOURCE_MODE:-}" != "1" ]]; then
-    : > "$LOG_FILE"
     main "$@"
   fi
 }

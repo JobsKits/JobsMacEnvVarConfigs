@@ -45,6 +45,8 @@ trs [参数...]
 
 启动后直接进入“原文 >”输入。直接输入原文并回车会立即翻译；输入单个空格后回车会打开设置菜单；`Ctrl-C` 退出。设置菜单用于切换方向、切换对方语言、打开 Translation Languages 设置或查看帮助。
 
+设置与语言列表使用 [**fzf**](https://formulae.brew.sh/formula/fzf)。语言页按 `←` 返回设置并保留原语言，设置页按 `←` 或 `Esc` 返回翻译；语言页按 `Esc` 取消本次设置并返回翻译。返回、空选和取消不会保存配置或准备语言资源。
+
 ## <span id="jobs-toc-heading-5" data-jobs-toc="v2">四、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 运行时说明和核心流程已经写在 `trs.command` 内部，不依赖同级 `README.md`。
