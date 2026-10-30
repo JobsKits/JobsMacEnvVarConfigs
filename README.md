@@ -1121,7 +1121,7 @@ zsh/custom/local.zsh
 | `a` | 打开 `~/.bash_profile` |
 | `b` | 打开 `~/.zshrc` |
 | `i` | 打开 iOS Simulator |
-| `d` | 进入默认 Flutter 项目目录，可传路径覆盖 |
+| `d` | 按显式路径、环境配置或当前工程上下文定位 Flutter 项目并进入 |
 | `check` | 进入项目后检查 Java / FVM / Flutter doctor |
 | `c` | 在项目里通过 jenv 锁定 JDK 17，并执行检查 |
 | `apk` | 构建 Flutter Android APK |
@@ -1141,14 +1141,18 @@ zsh/custom/local.zsh
 | `m5c` | 输入或拖入两个文件路径，比较 MD5 并判断字节内容是否一致 |
 | `flat` | URL 编码去乱码 / 解码，并自动复制结果到剪贴板 |
 
-迁移新机器前，优先检查文件开头这两个变量：
+`d`、`check`、`c` 的项目目录按“显式路径参数 → 已有 `JOBS_FLUTTER_PROJECT_DIR` 配置 → 从当前目录向上找到的最近 `pubspec.yaml`”解析。均未命中时显示检查位置并停止；不再预设某台电脑的项目。相对路径基于调用时的当前目录，也支持 `~` / `~/`；目录规范化后使用，路径文本不会再次作为 Shell 代码执行。
+
+需要固定个人默认值时，在加载 Flutter 模块前设置；不设置项目变量即可使用当前工程发现：
 
 ```zsh
-JOBS_FLUTTER_PROJECT_DIR="../../flutter_tiyu_app"
-JOBS_DART_CLI_COMPLETION_FILE="~/.dart-cli-completion/zsh-config.zsh"
+# 可选：按自己的目录设置，不需要修改库源码。
+export JOBS_FLUTTER_PROJECT_DIR="$HOME/开发项目/我的Flutter工程"
+# 未配置时已按当前用户主目录生成此默认值。
+export JOBS_DART_CLI_COMPLETION_FILE="$HOME/.dart-cli-completion/zsh-config.zsh"
 ```
 
-如果项目路径不对，`d`、`check`、`c`、`apk`、`ipa` 等项目相关命令就会失败或进入错误目录。
+显式参数或环境配置的目录失效时直接报错，不回退到其它项目。`apk`、`ipa` 保留当前工程检查和交互选择目录的流程，路径按字面值解析；`q` 或输入结束取消，不执行路径中的命令表达式。
 
 ## <span id="jobs-toc-heading-32" data-jobs-toc="v2">八、更新配置 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -1172,7 +1176,7 @@ JOBS_DART_CLI_COMPLETION_FILE="~/.dart-cli-completion/zsh-config.zsh"
 - 自动安装 JDK 17 依赖 [**Homebrew**](https://brew.sh/)。
 - 替换 `~/.zshrc` 前会自动备份，但仍建议先确认当前配置没有重要未迁移内容。
 - `env.zsh` 和 `aliases.zsh` 是生成文件，不建议直接长期手改。
-- `zsh/custom/local.zsh` 是 Scripts 模块加载器；固定项目路径主要在 `Scripts/_lib/jobs_flutter_lib.zsh` 中，`flutter` 函数由 `Scripts/flutter_project.command/flutter_project.command` 加载，迁移到新机器后建议先检查再使用。
+- `zsh/custom/local.zsh` 是 Scripts 模块加载器；项目目录由显式参数、环境配置或当前工程发现，不需要修改 `Scripts/_lib/jobs_flutter_lib.zsh` 中的机器路径；`flutter` 函数由 `Scripts/flutter_project.command/flutter_project.command` 加载。
 - `USE_FVM=true` 时，`env.zsh` 会在每次开启交互式 shell 时自动加载上面的 Flutter 模块：`flutter` / `dart` 按当前项目 `.fvmrc` 解析 SDK 版本；不在 FVM 项目内则回退到 `FLUTTER_CANDIDATES` 里第一个存在的目录（通常是 `~/fvm/default/bin`），再回退到 PATH 上的真实 `flutter`。FVM 项目内不需要再手动 `fvm flutter ...`。
 - `trs` 依赖 macOS 原生翻译能力；系统版本、语言资源和语言对支持情况会直接影响可用性。
 - 如果安装后没有立即生效，执行 `source ~/.zshrc`，或者重新打开终端。

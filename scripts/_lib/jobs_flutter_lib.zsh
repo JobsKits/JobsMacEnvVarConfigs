@@ -56,28 +56,53 @@ jobs_flutter_find_external_command() {
 }
 
 # ================================== 项目 / 开发环境命令 ==================================
-# ================================== CONFIG（硬编码绝对路径：你只改这里）==================================
-# ✅ 直接写死绝对路径：复制粘贴后只改这一行就行
-JOBS_FLUTTER_PROJECT_DIR="/Users/jobs/Documents/Github/flutter_tiyu_app"
-
-# （可选）dart completion 路径也别写死 /Users/mac 了
-JOBS_DART_CLI_COMPLETION_FILE="/Users/jobs/.dart-cli-completion/zsh-config.zsh"
+# 显式配置优先；未指定项目时由命令所在的当前工程上下文发现。
+JOBS_FLUTTER_PROJECT_DIR="${JOBS_FLUTTER_PROJECT_DIR:-}"
+JOBS_DART_CLI_COMPLETION_FILE="${JOBS_DART_CLI_COMPLETION_FILE:-$HOME/.dart-cli-completion/zsh-config.zsh}"
 
 # ================================== 通用：项目目录自检与解析 ==================================
+# 只展开当前用户的 ~/，其余路径按字面值处理，避免执行输入中的 Shell 表达式。
+jobs_flutter_resolve_directory() {
+  emulate -L zsh
+  local dir="${1:-}"
+
+  case "$dir" in
+    '~') dir="$HOME" ;;
+    '~/'*) dir="$HOME/${dir#\~/}" ;;
+  esac
+  [[ -n "$dir" && -d "$dir" ]] || return 1
+  (builtin cd -q -P -- "${dir:A}" && builtin pwd -P)
+}
 # 用法：
-#   jobs_flutter_get_project_dir                 -> 用默认 JOBS_FLUTTER_PROJECT_DIR
-#   jobs_flutter_get_project_dir "/abs/path"     -> 用你传入的绝对路径（会自检）
+#   jobs_flutter_get_project_dir             -> 用环境配置，未配置时向上查找当前工程
+#   jobs_flutter_get_project_dir "./工程"    -> 用显式路径（会自检）
 jobs_flutter_get_project_dir() {
-  local dir="${1:-$JOBS_FLUTTER_PROJECT_DIR}"
+  emulate -L zsh
+  local dir="${1:-${JOBS_FLUTTER_PROJECT_DIR:-}}" search_dir=""
 
-  # 允许你传 "~" 这种写法（虽然你说要绝对路径，但顺手兼容）
-  eval "dir=\"$dir\""
+  if [[ -z "$dir" ]]; then
+    search_dir="$(builtin pwd -P)" || return 1
+    while true; do
+      if [[ -f "$search_dir/pubspec.yaml" ]]; then
+        dir="$search_dir"
+        break
+      fi
+      [[ "$search_dir" == / ]] && break
+      search_dir="${search_dir:h}"
+    done
+    if [[ -z "$dir" ]]; then
+      print -u2 -r -- "❌ 当前目录及其上级未找到 pubspec.yaml：$PWD"
+      print -u2 -r -- '👉 请进入项目目录，传入项目路径，或设置 JOBS_FLUTTER_PROJECT_DIR。'
+      return 1
+    fi
+  fi
 
-  if [[ -z "$dir" || ! -d "$dir" ]]; then
-    echo "❌ 项目目录不存在：$dir" >&2
-    echo "👉 请修改 JOBS_FLUTTER_PROJECT_DIR 为真实绝对路径" >&2
+  if ! search_dir="$(jobs_flutter_resolve_directory "$dir")"; then
+    print -u2 -r -- "❌ 项目目录不存在：$dir（当前目录：$PWD）"
+    print -u2 -r -- '👉 请检查传入路径或 JOBS_FLUTTER_PROJECT_DIR；支持相对路径和 ~/。'
     return 1
   fi
+  dir="$search_dir"
 
   # Flutter 项目轻自检（不强制失败，主要是提示你配错目录）
   if [[ ! -f "$dir/pubspec.yaml" || ! -d "$dir/lib" ]]; then
@@ -269,7 +294,7 @@ jobs_flutter_i_impl() {
   jobs_session_i_impl "$@"
 }
 
-# ✅ d：默认进入你写死的项目目录（可传参覆盖）
+# d：进入显式配置或当前上下文发现的项目目录。
 jobs_flutter_d_impl() {
   local dir; dir="$(jobs_flutter_get_project_dir "${1:-}")" || return 1
   cd "$dir" || return 1
@@ -289,7 +314,7 @@ jobs_flutter_check_impl() {
 }
 
 # 🔥 JDK17 锁定到项目（c）🔥
-# ✅ 默认项目目录改为硬编码常量 + 自检
+# 复用同一项目目录解析与自检。
 jobs_flutter_c_impl() {
   local project_dir; project_dir="$(jobs_flutter_get_project_dir "${1:-}")" || return 1
   local want_major="17"
@@ -434,13 +459,13 @@ jobs_flutter_is_flutter_project() { local dir="$1"; [[ -d "$dir/lib" && -f "$dir
 
 jobs_flutter_get_project_dir_interactive() {
   local start="${1:-$PWD}" project_path="$start" input_path
+  project_path="$(jobs_flutter_resolve_directory "$start")" || project_path="$start"
   while ! jobs_flutter_is_flutter_project "$project_path"; do
     echo "❌ [$project_path] 不是 Flutter 项目目录（缺少 lib/ 或 pubspec.yaml）" >&2
-    read -r "?👉 请输入 Flutter 项目路径（回车=继续询问，q=退出）: " input_path
+    read -r "?👉 请输入 Flutter 项目路径（回车=继续询问，q=退出）: " input_path || return 1
     [[ "$input_path" == [Qq] ]] && return 1
     [[ -z "$input_path" ]] && continue
-    eval "project_path=\"$input_path\""
-    project_path="$(cd "$project_path" 2>/dev/null && pwd || echo "")"
+    project_path="$(jobs_flutter_resolve_directory "$input_path")" || project_path=""
     [[ -z "$project_path" ]] && echo "⚠️ 路径无效，请重试" >&2
   done
   printf "%s\n" "$project_path"

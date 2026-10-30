@@ -31,7 +31,9 @@
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、输入、结果与副作用 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-输入由上层命令传入，包括项目目录、拖入路径、构建参数及环境变量；默认项目位置和 Dart 补全配置位于 Flutter 库的配置段，复制环境后需要核对。结果写到终端、当前 Shell、目标工程或构建输出中，各入口的 README 负责具体交互与日志。
+输入由上层命令传入，包括项目目录、拖入路径、构建参数及环境变量。`d`、`check`、`c` 优先使用显式项目参数，其次使用已有 `JOBS_FLUTTER_PROJECT_DIR` 配置；均未提供时，从调用者当前目录向上寻找最近的 `pubspec.yaml`，找不到则显示检查位置并停止，不默认进入某台电脑的项目。相对路径基于调用时的当前目录，`~` / `~/` 按当前用户展开，结果规范化为物理目录；路径中的 `$()`、反引号和引号按文件名处理，不执行 Shell 表达式。APK / IPA 等交互选目录入口使用相同的安全路径解析，空回车重问，`q` 或输入结束取消。
+
+`JOBS_DART_CLI_COMPLETION_FILE` 保留已有配置；未配置时使用当前用户主目录下的 `.dart-cli-completion/zsh-config.zsh`。默认发现项目使用的是业务命令的当前工程上下文；库和命令包本身仍按其文件位置加载。结果写到终端、当前 Shell、目标工程或构建输出中，各入口的 README 负责具体交互与日志。
 
 函数定义被加载不代表业务已执行，但调用函数可能切换目录、重载环境、运行文件、重新激活全局 FVM、写项目 Java 版本或构建产物。需要影响当前终端的操作必须经 [entrypoints 函数包装](../entrypoints.command/README.md)调用；独立子进程不能更改父 Shell 状态。复制命令包时须连同它依赖的私有库保留相对布局。
 

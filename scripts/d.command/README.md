@@ -23,7 +23,7 @@
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-进入默认 Flutter 项目目录；传入路径时用传入路径覆盖默认目录。
+进入 Flutter 项目目录：显式路径参数优先，其次使用已有 `JOBS_FLUTTER_PROJECT_DIR`；均未提供时，从当前目录向上寻找最近的 `pubspec.yaml`。配置或参数目录失效、无当前工程时显示实际检查位置并停止。支持相对路径及 `~/`，路径按字面值解析，不执行其中的 Shell 表达式。
 
 该脚本适合 `.command` 双击运行，也可以在终端中执行。启动后的说明展示、依赖检查和核心流程都写在脚本内部。
 

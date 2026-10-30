@@ -25,6 +25,8 @@
 
 进入默认 Flutter 项目，锁定 FVM 版本，并执行 `flutter doctor -v`。
 
+项目路径依次使用显式参数、已有 `JOBS_FLUTTER_PROJECT_DIR`、当前目录向上最近的 `pubspec.yaml` 所在目录；配置或参数失效时停止，无工程时提示检查位置。支持相对路径及 `~/`，路径按字面值处理，不执行其中的 Shell 表达式。
+
 该脚本适合 `.command` 双击运行，也可以在终端中执行。启动后的说明展示、依赖检查和核心流程都写在脚本内部。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
