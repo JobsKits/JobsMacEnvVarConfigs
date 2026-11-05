@@ -24,6 +24,7 @@
 - [八、结构约定](#jobs-toc-heading-15)
   - [8.1、隔离回归与检查](#jobs-toc-heading-16)
 - [九、流程图](#jobs-toc-heading-17)
+  - [Flutter SDK获取与网络](#jobs-toc-heading-18)
 
 </details>
 <!-- jobs-toc:end -->
@@ -31,7 +32,7 @@
 ---
 
 > **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；脚本可单文件复制运行，不需要旁边的支持目录。普通终端模式选中该项后更新本体及公式索引，复用本轮已经成功的结果，不重复执行裸 `brew update`；索引失败则停止依赖它的升级。只在指定公式 `python@3.13` 缺失、损坏或版本不满足 `3.11+` 时经确认安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
-> 只有选中 Python 更新项后才执行内嵌预检；无人值守模式对内嵌环境层保持只读，缺失时停止该项，不借用系统 Python 绕过检查。原有其它升级项仍按自身选项运行。
+> 只有选中 Python 更新项后才执行内嵌预检；`-t` 明确授权自动维护该运行时，必要依赖缺失时自动准备并复检，不再逐次询问。不借用系统 Python 绕过检查；缺失 Homebrew 时报告未完成，由安装入口配置安装路径。
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
@@ -42,7 +43,7 @@
 核心原则：
 
 ```text
-install.command 安装 / 初始化过的内容，update.command 必须体现，并提供升级 / 刷新入口。
+update.command 维护 install.command 已安装 / 初始化的开发工具和依赖，不拉取或克隆工作区源码仓库。
 ```
 
 该脚本适合 `.command` 双击运行，也可以在终端中执行。启动后会先显示脚本内置自述，再按照更新顺序逐项询问。
@@ -70,9 +71,11 @@ update.command -t
 update.command --unattended
 ```
 
-无人值守模式会跳过脚本自述确认、自动执行所有更新项，并在 [**Homebrew**](https://brew.sh/) `Do you want to proceed with the upgrade? [y/n]` 这类已知确认点定点输入 `y`。Homebrew 的 IPv4 / IPv6 测速仅决定 curl 尝试顺序，停滞保护使用 `1 B/s`，允许慢速下载继续；失败后有限重试。脚本每 `20` 秒输出下载缓存观察结果，增长只代表仍有传输，最终成败以该轮命令结果为准。脚本不会要求预先输入管理员密码，也不会保存或保活密码凭证。
+无人值守模式会跳过脚本自述确认、自动执行所有更新项，并在 [**Homebrew**](https://brew.sh/) `Do you want to proceed with the upgrade? [y/n]` 这类已知确认点定点输入 `y`。Homebrew 的 IPv4 / IPv6 测速仅决定 curl 尝试顺序，停滞保护使用 `1 B/s`，允许慢速下载继续；失败后有限重试。脚本每 `20` 秒输出下载缓存观察结果，增长只代表仍有传输，最终成败以该轮命令结果为准。
 
-需要管理员权限的命令在无人值守模式下统一使用 `sudo -n`：如果当前已有可用的 sudo 缓存或精确的 `NOPASSWD` 授权，命令可以执行；否则立即失败并跳过该提权项，继续后续更新，绝不会卡在密码提示。脚本不会自动修改 `sudoers`。
+管理员授权集中在启动阶段：有可用缓存时直接执行；在交互终端中缺少缓存时调用一次 `sudo -v`，完成授权后即可离开。脚本每 45 秒以 `sudo -n -v` 刷新本轮授权，结束或中断后停止保活。密码只由系统 sudo 接收，脚本不保存、不传递密码，也不修改 `sudoers`；不撤销用户此前已有的凭证。
+
+后续提权命令统一使用 `sudo -n`。后台无终端时不询问密码，仍允许已有缓存或精确 `NOPASSWD` 命令授权；授权不足明确计入未完成并继续其它项目。外部认证策略若要求重新验证，也会如实报告，不能靠脚本绕过。手动下载网页不在 `-t` 中弹出，打开网页不代表完成升级。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、交互规则 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -96,7 +99,7 @@ update.command --unattended
 -h, --help  # 只显示参数说明，不初始化日志或运行更新。
 ```
 
-无人值守模式等价于逐项选择执行，并保证脚本自身不等待终端密码。它不等价于绕过外部工具的安全机制；系统弹窗、图形化授权、网络失败或第三方安装器的未知交互可能导致对应项失败，其余项仍会继续。
+无人值守模式等价于逐项选择执行并自动处理维护所需的依赖。启动授权完成后，脚本自身不再等待终端密码；系统弹窗、图形化授权、网络失败或第三方安装器的未知交互仍可能使对应项未完成，其余项继续。
 
 扩展运行说明可通过环境变量跳过；首屏简明自述与普通模式的防误触确认仍保留：
 
@@ -120,13 +123,16 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
   - 信任处理：全局 `brew upgrade` 前会先处理脚本维护的第三方 tap，避免 Homebrew 扫描阶段提前跳过 `fvm` 等非官方 formula
   - 托管处理：`-t` 模式下会对 `brew upgrade` / `brew upgrade --cask` 的 `[y/n]` 确认自动输入 `y`
   - 网络处理：`brew update`、全局及逐项 formula / cask 升级、Python 必需公式准备和 CocoaPods 本体统一复用下载重试；索引按真实 Brew 路径在本轮缓存结果。更新索引失败时停止相应升级；升级失败时跳过 cleanup，保留已完成包与下载缓存。
+  - 类型与健康状态：公式升级显式使用 `--formula`；`go-task` 使用 `homebrew/core/go-task`，避免同名第三方 cask 歧义。`brew doctor` 的已识别健康警告单独计数并保留原文，不冒充升级失败；明确错误、异常退出或日志写入失败仍记未完成。不会自动删除废弃软件、根证书或强制覆盖链接。
   - `brew cask`：由 `BREW_CASKS` 自动生成逐项升级入口
   - `brew formula`：由 `BREW_FORMULAE` 自动生成逐项升级入口
   - `github-store`：升级前确认 `OpenHub-Store/tap`，升级后对 `$APPLICATIONS_DIR/GitHub-Store.app` 执行 `xattr -dr com.apple.quarantine`
 - [**Rosetta 2**](https://support.apple.com/en-us/102527)
   - 对应更新：检查安装状态；Rosetta 2 通常跟随 [**macOS**](https://www.apple.com/macos/) 系统更新维护
 - [**FVM**](https://fvm.app/) / [**Flutter**](https://flutter.dev/)
-  - 对应更新：FVM 工具复用统一的 `brew formula` 升级逻辑。Flutter 先解析真实 SDK；独立 SDK 和 FVM 频道缓存可执行 `upgrade`，失败后停止该 SDK 的隔离标记处理与 doctor；doctor 本身的错误会进入汇总。
+  - 对应更新：FVM 工具复用统一的 `brew formula` 升级逻辑。Flutter 先解析真实 SDK；独立 SDK 和 FVM 频道缓存可执行 `upgrade`，失败后停止该 SDK 的隔离标记处理与 doctor。doctor 的纯 `Network resources` 连通性告警单独计为健康警告；升级、组件下载和其它命令错误仍计入未完成。
+  - Android 依赖自愈：以 doctor 报告的 SDK 与 JDK 为准，实际验证 `sdkmanager --version`；缺失时复用已有引导工具，包括 SDK 内非标准目录的健康工具，否则通过 Homebrew 官方 `android-commandlinetools` cask 补齐引导，再安装目标 SDK 中 Flutter 可识别的 `cmdline-tools;latest`。引导与目标修复各最多一次，安装后复检，再接受许可并重新运行 doctor。`-t` 自动回答许可提示；安装或许可的网络错误、目录不可写、修复失败明确未完成，普通设备离线提示保留为健康警告。环境变量仅在本次维护作用域生效；不改项目 SDK 配置。参见 [Android sdkmanager](https://developer.android.com/tools/sdkmanager)。
+  - 等待时限：每段 SDK 安装 / 许可命令默认总时限 600 秒，`JOBS_ANDROID_SDK_TIMEOUT` 可设置为 `1`～`1800` 秒；超时终止本次进程树并报告未完成。
   - 固定版本：`fvm/default` 指向数字版本缓存时保留该版本，明确记录 SDK 升级跳过，避免原地修改被项目共享的固定 SDK。需要换版时先自行执行 `fvm install <新版本>`、`fvm global <新版本>`；参见 [FVM 官方说明](https://fvm.app/documentation/getting-started/faq)。
   - 隔离处理：`brew cask：flutter` 和 `flutter upgrade` 完成后，先验证 SDK 内 Dart 二进制文件的 `FLUTTER.IO LLC (S8QB4VV633)` 官方签名；仅在签名有效且签名方匹配时，定向解除 Flutter SDK 的 `com.apple.quarantine` 标记，避免 macOS 将可验证的 `dart` 误报为“已损坏”
 - [**Node.js**](https://nodejs.org/) / [**Corepack**](https://nodejs.org/api/corepack.html) / [**npm**](https://www.npmjs.com/) / [**pnpm**](https://pnpm.io/)
@@ -139,7 +145,8 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
   - 对应更新：检测已安装后执行 `npm install -g @colbymchenry/codegraph@latest`，输出版本，并执行 `codegraph install --yes` 刷新 Agent 配置
 - [**Ruby**](https://www.ruby-lang.org/) / [**RubyGems**](https://rubygems.org/) / [**rbenv**](https://github.com/rbenv/rbenv)
   - 对应更新：刷新 `rbenv` 初始化配置并 rehash。Homebrew / 系统 Ruby 的 RubyGems 本体由原包管理器维护，不执行 `gem update --system`；其它自管 Ruby 先检查实际目标权限。
-  - Gem 权限：从 `gem env` 获取当前 Ruby、安装目录及 bin，检查插件已有文件等实际写入位置。共享目录不完整可写时，只在用户 Gem 目录位于当前 HOME 内、可写且当前 Ruby 确认可加载时执行 `gem update --user-install`；更新后复检搜索路径，用户 bin 仅追加到本次进程 PATH，已有命令保持原来源优先。失败明确返回，不自动 sudo 或改所有权。参见 [RubyGems 安装说明](https://guides.rubygems.org/gem-installation-and-loading/)。
+  - Gem 权限与运行时：扩展检查、Gem 环境读取及升级使用同一个已选定的 Ruby，通过该运行时直接执行 RubyGems，不依赖 PATH 中另一个 `gem` 的 shebang。检查安装目录、插件及 bin 等实际写入位置。共享目录不完整可写时，只在用户 Gem 目录位于当前 HOME 内、可写且当前 Ruby 确认可加载时执行 `gem update --user-install`；更新后复检搜索路径，用户 bin 仅追加到本次进程 PATH，已有命令保持原来源优先。失败明确返回，不自动 sudo 或改所有权。参见 [RubyGems 安装说明](https://guides.rubygems.org/gem-installation-and-loading/)。
+  - 文档生成：Gem 更新统一使用 `--no-document`，只升级所选包或 RubyGems 本体，不生成本地 ri / RDoc 文档；实际下载、安装和升级错误仍按未完成报告。
   - 原生扩展：更新前后检查当前 CocoaPods 所用 Ruby，仅对缺失的已安装扩展版本备份重建；健康版本直接跳过，详见 [原生扩展修复](#gem-native-extensions)。
 - [**CocoaPods**](https://cocoapods.org/) 工具与公共规格源
   - 工具更新：按当前 PATH 中 `pod` 的实际路径判断是否由 Homebrew 管理，命中时先通过统一索引门禁，再沿用下载重试；本轮逐项 formula 阶段已成功升级则跳过重复升级。活跃命令不属于该 formula、但当前 RubyGems 已安装时，复用上述 Gem 目标权限检查与用户目录回退。归属无法确认或工具未登记时明确提示，不自动补装或切换活跃 Homebrew pod 来源。
@@ -150,9 +157,6 @@ JOBS_MAC_ENV_SKIP_README=1 ./update.command
   - 对应更新：执行 `dart pub global list`，按当前 `dart pub cache repair --help` 决定是否添加 `--all`；`No pubspec.yaml found` 等错误即使返回零也按失败处理。
 - [**Git LFS**](https://git-lfs.com/) 初始化
   - 对应更新：执行 `git lfs install`，刷新 `core.compression`、`http.postBuffer` 等大文件相关 [**Git**](https://git-scm.com/) 参数
-- [**JobsKits**](https://github.com/JobsKits) 仓库
-  - 对应更新：`JobsSoftware.MacOS`、`JobsMacEnvVarConfig` 执行 `git pull --ff-only`
-  - 对应保护：只确认 `JobsMacEnvVarConfig/install.command` 可执行权限，不执行它，避免递归调用安装入口
 - 手动下载 / 更新页面
   - [**Visual Studio Code**](https://code.visualstudio.com/)
   - [**Android Studio**](https://developer.android.com/studio?hl=zh-cn)
@@ -307,7 +311,7 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 少数特殊 `formula` 的更新后置动作已经适配：
 
 - [**fvm**](https://fvm.app/)：自动确认 `leoafarias/fvm` tap；如果当前 Homebrew 开启 tap trust 策略，会先执行 `brew trust leoafarias/fvm`
-- [**go-task**](https://taskfile.dev/)：自动确认 `go-task/tap`，并使用 `go-task/tap/go-task` 升级
+- [**go-task**](https://taskfile.dev/)：使用官方 core 公式 `brew upgrade --formula homebrew/core/go-task`，不依赖第三方同名 cask 的 tap
 - [**rbenv**](https://github.com/rbenv/rbenv)：升级后刷新 `rbenv` 初始化配置
 - [**jenv**](https://www.jenv.be/)：升级后刷新 `jenv` 初始化配置
 - [**openjdk**](https://openjdk.org/) / [**openjdk@17**](https://openjdk.org/projects/jdk/17/)：升级后输出 Java 配置提示
@@ -354,8 +358,7 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 15. [**Python**](https://www.python.org/) / `pip`
 16. [**Dart**](https://dart.dev/) `pub` 缓存
 17. [**Git LFS**](https://git-lfs.com/) 初始化刷新
-18. [**JobsKits**](https://github.com/JobsKits) 仓库
-19. 手动下载 / 更新页面
+18. 手动下载 / 更新页面
 
 ### <span id="jobs-toc-heading-10" data-jobs-toc="v2">5.1、CodeGraph 升级说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -431,7 +434,7 @@ ruby Tests/cocoapods_proxy_tests.rb
 
 `Ignoring ... because its extensions are not built` 表示当前 Ruby 找不到该已安装版本的平台扩展。本机旧扩展保存在 `arm64-darwin-25/4.0.0`，当前 Ruby 需要 `arm64-darwin-27/4.0.0`。修复会使用当前 Ruby 重新编译，再用新进程精确激活原版本并实际加载原生二进制；平台名称取自当前运行时，不写死 `27`，不通过改名目录或复制完成标记绕过构建。
 
-`update -t` 的 Ruby / RubyGems 项在原有 Gem 更新前后执行检查；CocoaPods 项在工具升级后、Specs 刷新前也会复检，单独选择该项仍可修复。优先从活跃 `pod` 的脚本及 Homebrew 包装层定位 Ruby；无法解析时使用 PATH 中的 Ruby，再检查标准 Homebrew Ruby 路径。仅处理其 Gem 搜索路径中缺失扩展的非默认 Gem，Gem 升级命令仍保持原来的 PATH 选择。
+`update -t` 的 Ruby / RubyGems 项在 Gem 更新前后执行检查；CocoaPods 项在工具升级后、Specs 刷新前也会复检，单独选择该项仍可修复。优先从活跃 `pod` 的脚本及 Homebrew 包装层定位 Ruby；无法解析时使用 PATH 中的 Ruby，再检查标准 Homebrew Ruby 路径。仅处理其 Gem 搜索路径中缺失扩展的非默认 Gem，Gem 环境与更新绑定同一运行时，避免混用系统 Ruby 的目录。
 
 每个待修目标先将完整 Gem 目录、当前平台已有扩展及原始 gemspec 备份到 `~/.JobsMacEnv/backups/gem-native-extensions/`，再通过 RubyGems 构建接口使用本机已有 `extconf.rb` 源码重编译。构建或加载验证失败时恢复该目标并保留失败材料；其它已成功目标保留。没有缺失项时不编译、不写备份。缺少编译工具链、源码或目录写权限时明确报失败，由更新总流程记录后继续其它更新项；CocoaPods 项复检失败时跳过本次 Specs 刷新。
 
@@ -466,7 +469,7 @@ codegraph install --yes
 dart pub cache repair
 ```
 
-普通模式会在执行每个大项前单独询问。无人值守模式自动执行各项，但提权命令只在 `sudo -n` 可用时执行，否则记录跳过后继续。
+普通模式会在执行每个大项前单独询问。无人值守模式在终端启动阶段集中授权并保活，后续提权命令只使用 `sudo -n`；权限不足明确记录未完成后继续。
 
 Homebrew 换线会重新执行当前幂等的 `brew update` / `brew upgrade` 命令。Homebrew 负责管理下载缓存和已完成项；脚本不手工删除缓存，也不回滚已完成的包。
 
@@ -478,7 +481,7 @@ Homebrew 换线会重新执行当前幂等的 `brew update` / `brew upgrade` 命
 $TMPDIR/update.log
 ```
 
-日志以纯文本落盘；交互终端按能力显示颜色，非 TTY、`TERM=dumb` 和 `NO_COLOR` 不输出 ANSI。帮助、参数错误、未确认或取消入口保留上一份日志；确认进入本轮更新后才初始化日志。最终汇总区分完成、部分执行、跳过和失败，不以最后一条命令成功覆盖此前错误。
+日志以纯文本落盘；交互终端按能力显示颜色，非 TTY、`TERM=dumb` 和 `NO_COLOR` 不输出 ANSI。帮助、参数错误、未确认或取消入口保留上一份日志；确认进入本轮更新后才初始化日志。最终汇总区分完成、部分执行、跳过和失败，另列 Homebrew 健康告警数量，不以最后一条命令成功覆盖此前错误。
 
 ## <span id="jobs-toc-heading-15" data-jobs-toc="v2">八、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -506,6 +509,9 @@ update "$@"
 /bin/zsh ./Tests/flutter_gem_tests.zsh
 /bin/zsh ./Tests/update_audit_tests.zsh
 /bin/zsh ./Tests/entrypoint_tests.zsh
+/bin/zsh ./Tests/brew_diagnostics_tests.zsh/brew_diagnostics_tests.zsh
+/bin/zsh ./Tests/android_sdk_tests.zsh/android_sdk_tests.zsh
+/bin/zsh ./Tests/ruby_runtime_tests.zsh/ruby_runtime_tests.zsh
 /bin/zsh ./Tests/cocoapods_network_tests.zsh
 /usr/bin/ruby ./Tests/cocoapods_proxy_tests.rb
 ```
@@ -515,8 +521,11 @@ update "$@"
 | `update_result_tests.zsh` | 非零退出、零退出码明确错误、远端提交核验、Shell 函数环境保留、日志写入、sudo 精确授权、失败 / 部分 / 跳过汇总、Dart 参数适配 |
 | `homebrew_network_tests.zsh` | 停滞门槛、协议重试、恢复后的最终状态、索引共享、失败索引门禁、API 降级、缓存保留、curl 配置还原 |
 | `flutter_gem_tests.zsh` | FVM 固定版本保护、SDK 失败后停止后续动作、doctor 错误、隔离标记查询失败、只读插件、用户 Gem 安装与路径边界 |
-| `update_audit_tests.zsh` | 含空格路径、配置写入失败、健康发现、Python 只读及包管理边界、信号退出与私有临时文件回收 |
-| `entrypoint_tests.zsh` | 帮助与参数错误、自述确认 / 取消、非交互边界、日志初始化与纯文本输出 |
+| `update_audit_tests.zsh` | 含空格路径、配置写入失败、健康发现、Python 无人值守授权与只读边界、包管理约束、信号退出与私有临时文件回收 |
+| `entrypoint_tests.zsh` | 帮助与参数错误、自述确认 / 取消、一次管理员授权、后台授权不足、保活回收、日志初始化与纯文本输出 |
+| [Homebrew 诊断测试](./Tests/brew_diagnostics_tests.zsh/README.md) | doctor 健康警告与执行失败分类、go-task 官方公式及包类型、tap 失败传播 |
+| [Android SDK 测试](./Tests/android_sdk_tests.zsh/README.md) | SDK / JDK 发现、缺少命令行工具的自动准备、许可与修复后复检、失败有界传播 |
+| [Ruby 运行时测试](./Tests/ruby_runtime_tests.zsh/README.md) | PATH 中旧 gem 隔离、相同解释器绑定、缺少 gem 启动器及失败传播 |
 | `cocoapods_network_tests.zsh` / `cocoapods_proxy_tests.rb` | CocoaPods 归属、索引门禁、选源、代理继承、超时与失败保留缓存 |
 
 原生扩展的独立回归命令见 [Ruby 原生扩展](#gem-native-extensions)。隔离回归证明分支和结果判定符合预期；真实受限网络上的整轮更新仍需在目标电脑运行，不能把假命令成功当作 GitHub / GHCR / Flutter 存储已恢复。
@@ -526,7 +535,10 @@ update "$@"
 ```mermaid
 flowchart TD
     A([启动 update.command]) --> B[打印脚本内置自述]
-    B --> C[等待回车继续]
+    B --> T{是否为 -t}
+    T -->|是| U[终端启动时一次授权并保活<br/>后台复用已有授权]
+    T -->|否| C[等待回车继续]
+    U --> F[自动执行升级与必要依赖修复]
     C --> D[按 install.command 对应项逐项询问]
     D --> E{当前项是否执行}
     E -->|输入任意字符后回车| F[执行升级 / 刷新]
@@ -566,3 +578,7 @@ flowchart TD
 ```
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
+
+### <span id="jobs-toc-heading-18" data-jobs-toc="v2">Flutter SDK获取与网络</span><!-- jobs-toc:heading-end -->
+
+Flutter SDK首次自举、FVM SDK安装和Flutter维护在获取前探测真实来源并选择当前任务路线，网络失败持续重试，Ctrl+C/终止信号取消。健康缓存可直接使用；run/pub/analyze/build等业务只执行一次。库被source时不下载、不更改父Shell代理或源。Brew Flutter cask通过`brew info --json=v2 --cask flutter`读取真实URL，仅比较连接路线，Brew原URL和SHA校验保留；更新入口继续沿用原双栈回退及结果统计。固定FVM版本缓存继续保留pin。部署时需携带完整`scripts/_lib`内三个SDK网络模块目录。

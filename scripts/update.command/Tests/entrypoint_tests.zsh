@@ -34,7 +34,30 @@ export JOBS_MAC_ENV_SOURCE_MODE=1
 source "$ENTRY_TEST_SCRIPT" || exit 97
 unset JOBS_MAC_ENV_SOURCE_MODE
 LOG_FILE="$ENTRY_TEST_CASE/log"
-if [[ "${ENTRY_TEST_MODE:-stub}" == signal ]]; then
+function sudo() {
+  print -r -- "sudo|$*" >> "$ENTRY_TEST_CASE/sudo-calls"
+  if [[ "$*" == '-n -v' ]]; then
+    [[ "${ENTRY_TEST_AUTH:-denied}" == cached || -f "$ENTRY_TEST_CASE/authorized" ]]
+  elif [[ "$*" == '-v' ]]; then
+    print -r -- 'MOCK_INITIAL_AUTH'
+    local answer=''
+    IFS= read -r answer || return 1
+    [[ "$answer" == authorize ]] || return 1
+    : > "$ENTRY_TEST_CASE/authorized"
+  elif [[ "$*" == '-n fixture-command' && ( "${ENTRY_TEST_AUTH:-denied}" == cached || -f "$ENTRY_TEST_CASE/authorized" ) ]]; then
+    return 0
+  else
+    print -u2 -r -- 'sudo: a password is required'
+    return 1
+  fi
+}
+if [[ "${ENTRY_TEST_MODE:-stub}" == auth ]]; then
+  function jobs_update_show_readme_and_wait() { return 0; }
+  function update() {
+    [[ -z "$JOBS_UPDATE_SUDO_KEEPALIVE_PID" ]] || print -r -- "$JOBS_UPDATE_SUDO_KEEPALIVE_PID" > "$ENTRY_TEST_CASE/keepalive"
+    jobs_update_run_sudo_cmd '假管理员任务' fixture-command
+  }
+elif [[ "${ENTRY_TEST_MODE:-stub}" == signal ]]; then
   function jobs_update_show_readme_and_wait() { return 0; }
   function update() {
     JOBS_UPDATE_BREW_CURLRC="$ENTRY_TEST_CASE/curlrc"
@@ -59,7 +82,7 @@ DRIVER
 }
 # 为每一项准备独立的旧日志和环境。
 reset_fixture() {
-  export ENTRY_TEST_CASE="$TEST_ROOT/case-$TEST_COUNT" ENTRY_TEST_MODE=stub ENTRY_TEST_RESULT=0 TERM=xterm-256color
+  export ENTRY_TEST_CASE="$TEST_ROOT/case-$TEST_COUNT" ENTRY_TEST_MODE=stub ENTRY_TEST_RESULT=0 ENTRY_TEST_AUTH=denied TERM=xterm-256color
   unset NO_COLOR
   /bin/mkdir -p "$ENTRY_TEST_CASE/runtime"
   print -r -- preserved > "$ENTRY_TEST_CASE/log"
@@ -69,7 +92,7 @@ reset_fixture() {
 # 限定等待时间，避免入口回归后测试无限挂起。
 wait_for_file() {
   local attempt
-  for attempt in {1..100}; do
+  for attempt in {1..500}; do
     [[ -f "$1" ]] && return 0
     /bin/sleep 0.02
   done
@@ -87,7 +110,7 @@ start_pty() {
   TEST_PTY="entry-$TEST_COUNT"
   zpty -b "$TEST_PTY" /bin/zsh "$TEST_ROOT/driver.zsh" "$@" || return 1
   local attempt
-  for attempt in {1..100}; do
+  for attempt in {1..500}; do
     drain_pty
     [[ "$TEST_TRANSCRIPT" == *'已了解脚本用途与影响'* ]] && return 0
     /bin/sleep 0.02
@@ -126,7 +149,7 @@ test_intro_cancel() {
   start_pty || return 1
   zpty -w -n "$TEST_PTY" $'\003'
   local attempt cancelled=0
-  for attempt in {1..100}; do
+  for attempt in {1..500}; do
     if ! zpty -t "$TEST_PTY" 2>/dev/null; then
       cancelled=1
       break
@@ -165,6 +188,44 @@ test_unattended_result() {
   /bin/zsh "$TEST_ROOT/driver.zsh" -t < /dev/null > "$ENTRY_TEST_CASE/output" 2>&1 || result=$?
   [[ "$result" == 7 && "$(< "$ENTRY_TEST_CASE/calls")" == called ]] || return 1
   ! /usr/bin/grep -q $'\033' "$ENTRY_TEST_CASE/output" "$ENTRY_TEST_CASE/log"
+}
+# 缓存授权直接全量执行，正常退出后本轮保活进程已结束。
+test_cached_auth_cleanup() {
+  export ENTRY_TEST_MODE=auth ENTRY_TEST_AUTH=cached
+  /bin/zsh "$TEST_ROOT/driver.zsh" -t </dev/null > "$ENTRY_TEST_CASE/output" 2>&1 || return 1
+  local keepalive_pid="$(< "$ENTRY_TEST_CASE/keepalive")"
+  ! kill -0 "$keepalive_pid" 2>/dev/null || return 1
+  [[ "$(< "$ENTRY_TEST_CASE/sudo-calls")" == $'sudo|-n -v\nsudo|-n fixture-command' ]]
+}
+# 后台无授权时不尝试密码输入，管理员任务必须真实返回未完成。
+test_background_auth_denied() {
+  export ENTRY_TEST_MODE=auth
+  local result=0
+  /bin/zsh "$TEST_ROOT/driver.zsh" -t </dev/null > "$ENTRY_TEST_CASE/output" 2>&1 || result=$?
+  [[ "$result" == 1 && ! -f "$ENTRY_TEST_CASE/keepalive" ]] || return 1
+  [[ "$(< "$ENTRY_TEST_CASE/sudo-calls")" == $'sudo|-n -v\nsudo|-n fixture-command' ]] || return 1
+  /usr/bin/grep -Fq '缺少该命令的管理员授权' "$ENTRY_TEST_CASE/log"
+}
+# 真实 TTY 只在开头询问一次，后续管理员动作均为非交互执行。
+test_initial_auth_once() {
+  export ENTRY_TEST_MODE=auth
+  TEST_PTY="entry-auth-$TEST_COUNT"
+  zpty -b "$TEST_PTY" /bin/zsh "$TEST_ROOT/driver.zsh" -t || return 1
+  local attempt ready=0
+  for attempt in {1..500}; do
+    drain_pty
+    if [[ "$TEST_TRANSCRIPT" == *MOCK_INITIAL_AUTH* ]]; then
+      ready=1
+      break
+    fi
+    /bin/sleep 0.02
+  done
+  (( ready == 1 )) || return 1
+  zpty -w "$TEST_PTY" authorize
+  finish_pty || return 1
+  [[ "$(< "$ENTRY_TEST_CASE/result")" == 0 ]] || return 1
+  [[ "$(< "$ENTRY_TEST_CASE/sudo-calls")" == $'sudo|-n -v\nsudo|-v\nsudo|-n fixture-command' ]] || return 1
+  ! kill -0 "$(< "$ENTRY_TEST_CASE/keepalive")" 2>/dev/null
 }
 # 单独向入口 PID 发送 TERM 时立即回收其子进程和本轮 curlrc。
 test_signal_cleanup() {
@@ -212,6 +273,9 @@ run_tests() {
   run_case '终端配色与纯文本日志' test_terminal_colors
   run_case 'NO_COLOR完整降级' test_no_color
   run_case '无人值守传播假业务失败' test_unattended_result
+  run_case '缓存授权直接执行且结束停止保活' test_cached_auth_cleanup
+  run_case '后台无授权不等待密码并报告未完成' test_background_auth_denied
+  run_case '启动时一次授权后无交互执行' test_initial_auth_once
   run_case 'TERM及时回收子进程和临时配置' test_signal_cleanup
   print -r -- "完成：$TEST_COUNT 项，失败 $TEST_FAILED 项。"
   (( TEST_FAILED == 0 ))

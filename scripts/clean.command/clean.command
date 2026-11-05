@@ -1,8 +1,8 @@
 #!/bin/zsh
 # 脚本自述：
 # - 脚本名称：clean.command
-# - 核心用途：清理 zsh 历史、用户 Library/Caches 内容、Homebrew 缓存和 Spotlight 中不可在 macOS 打开的开发 App 图标。
-# - 影响范围：会删除用户缓存、将 Spotlight 收录的非 macOS 构建 App 移入废纸篓、注销开发 App 记录、清空终端历史，并短暂重启 Spotlight 与 Dock。
+# - 核心用途：清理 zsh 历史、用户缓存、Homebrew 缓存、失效开发 App 图标和实体已缺失的 iOS 模拟器登记。
+# - 影响范围：会删除用户缓存、将开发构建 App 移入废纸篓、备份并注销实体缺失的模拟器、清空终端历史，并短暂重启 Spotlight 与 Dock。
 # - 运行提示：运行后会先打印内置自述；按回车继续，按 Ctrl+C 取消。
 
 
@@ -111,13 +111,16 @@ clean - 终端清理
   - 删除 ${HOME}/Library/Caches 内的文件、子目录和隐藏项，保留 Caches 目录本身。
   - 将 Spotlight 收录且无法在 macOS 打开的 Apple 平台构建 App 移入废纸篓。
   - 定向注销非 macOS 构建产物与模拟器 App 的 LaunchServices 记录。
+  - 检查实体已缺失的 iOS 模拟器，先备份残留数据，再按 UUID 注销 CoreSimulator 登记。
   - 检测到 Homebrew 时顺手执行 brew cleanup。
 
 说明：
   - 用户缓存直接删除，不经过废纸篓；应用后续可能重新生成缓存。
   - 缓存目录为符号链接时跳过；无权限删除的项目会记录日志并继续后续清理。
   - 只移动用户目录中 Build/Products 或 build/*-iphone 等开发输出下的 .app。
-  - 不移动 Applications 里的正常 App，不移动 CoreSimulator 设备容器中的 App 实体。
+  - 不移动 Applications 里的正常 App，不移动正常 CoreSimulator 设备容器中的 App 实体。
+  - 模拟器目录或 device.plist 已缺失才注销；仅 data 缺失或 Runtime 不可用的设备保留。
+  - 只关闭待注销的损坏设备；残留目录先备份到废纸篓，正常设备与共享 Runtime 保留。
   - 构建 App 会保留在废纸篓的 JobsClean-DevelopmentApps-* 目录中，可恢复或重新构建。
   - 会短暂重启 Spotlight、corespotlightd、sharedfilelistd 和 Dock，界面可能闪烁一次。
   - 日志路径：${LOG_FILE}
@@ -129,7 +132,7 @@ EOFREADME
     return 1
   fi
   local answer=""
-  if ! read -r "?👉 已了解会删除用户缓存、清空历史并将构建 App 移入废纸篓，按回车继续；按 Ctrl+C 取消：" answer; then
+  if ! read -r "?👉 已了解缓存、历史、构建 App 和失效模拟器登记的清理范围，按回车继续；按 Ctrl+C 取消：" answer; then
     print -r -- '无法读取确认输入，已取消 clean，未执行任何清理。' | jobs_intro_style body
     return 1
   fi
@@ -193,6 +196,193 @@ jobs_clean_user_caches() {
     return 1
   fi
   success_echo "用户缓存清理完成：已删除 ${removed_count} 项，保留目录：$cache_dir"
+}
+# 限时调用当前 Xcode 的 simctl，固定设备集，取消或超时只结束本次客户端。
+jobs_clean_simctl() (
+  local devices_dir="$1" simctl_bin="" task_pid="" result=0 deadline=$((SECONDS + 30))
+  shift
+  simctl_bin="$(/usr/bin/xcrun --find simctl 2>/dev/null)" || return 127
+  trap '[[ -z "$task_pid" ]] || /bin/kill -KILL "$task_pid" 2>/dev/null' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  "$simctl_bin" --set "$devices_dir" "$@" &
+  task_pid=$!
+  while /bin/kill -0 "$task_pid" 2>/dev/null; do
+    if (( SECONDS >= deadline )); then
+      /bin/kill -KILL "$task_pid" 2>/dev/null || true
+      wait "$task_pid" 2>/dev/null || true
+      task_pid=""
+      print -u2 -r -- 'simctl 操作超过 30 秒，已停止本次客户端。'
+      return 124
+    fi
+    /bin/sleep 0.1
+  done
+  wait "$task_pid" || result=$?
+  task_pid=""
+  return "$result"
+)
+# 完整校验 JSON 后才输出 iOS UUID 与状态，避免错误输出或外部路径成为删除参数。
+jobs_clean_simulator_rows() {
+  /usr/bin/osascript -l JavaScript - "$1" "$2" <<'JOBS_SIMULATOR_JSON'
+ObjC.import('Foundation');
+function run(argv) {
+  const raw = $.NSString.stringWithContentsOfFileEncodingError(argv[0], $.NSUTF8StringEncoding, null);
+  const payload = JSON.parse(ObjC.unwrap(raw));
+  if (!payload || !payload.devices || typeof payload.devices !== 'object' || Array.isArray(payload.devices)) {
+    throw new Error('缺少 devices 对象');
+  }
+  const rows = [], seen = {};
+  Object.keys(payload.devices).forEach(function(runtime) {
+    if (!Array.isArray(payload.devices[runtime])) throw new Error('设备清单不是数组');
+    if (!/^com\.apple\.CoreSimulator\.SimRuntime\.iOS-/.test(runtime)) return;
+    payload.devices[runtime].forEach(function(device) {
+      if (!device || typeof device.udid !== 'string' ||
+          !/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i.test(device.udid) ||
+          typeof device.state !== 'string' || !device.state || /[\x00-\x1f\x7f]/.test(device.state) ||
+          device.dataPath !== argv[1] + '/' + device.udid + '/data' || seen[device.udid.toUpperCase()]) {
+        throw new Error('设备 UUID、状态或 dataPath 不可靠');
+      }
+      seen[device.udid.toUpperCase()] = true;
+      rows.push(device.udid + '\t' + device.state);
+    });
+  });
+  return rows.join('\n');
+}
+JOBS_SIMULATOR_JSON
+}
+# 0 表示目录或定义确实缺失；1 保留现有定义；2 表示权限、链接或路径不可靠。
+jobs_clean_simulator_missing() {
+  emulate -L zsh
+  local devices_dir="$1" uuid="$2" current="${HOME:A}" component="" entry=""
+  [[ -n "$HOME" && "$HOME" == /* && "$current" != / && -d "$current" && -r "$current" && -x "$current" ]] || return 2
+  [[ "$devices_dir" == "$current/Library/Developer/CoreSimulator/Devices" ]] || return 2
+  [[ "$uuid" =~ '^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$' ]] || return 2
+  for component in Library Developer CoreSimulator Devices "$uuid"; do
+    current+="/$component"
+    [[ ! -L "$current" ]] || return 2
+    [[ -e "$current" ]] || return 0
+    [[ -d "$current" && -r "$current" && -x "$current" ]] || return 2
+  done
+  for entry in "$current/device.plist" "$current/data"; do
+    [[ ! -L "$entry" ]] || return 2
+  done
+  if [[ -e "$current/device.plist" ]]; then
+    [[ -f "$current/device.plist" && -r "$current/device.plist" ]] || return 2
+    # 保留仍有定义的设备，data 可由系统初始化或重新生成。
+    [[ ! -e "$current/data" || ( -d "$current/data" && -r "$current/data" && -x "$current/data" ) ]] || return 2
+    return 1
+  fi
+  [[ ! -e "$current/data" || ( -d "$current/data" && -r "$current/data" && -x "$current/data" ) ]] || return 2
+  return 0
+}
+# 写操作前重新查询同一 UUID；恢复、状态变化或已消失均保留，不沿用旧快照。
+jobs_clean_simulator_recheck() {
+  local devices_dir="$1" uuid="$2" expected_state="$3" snapshot="$4" check_result=0
+  jobs_clean_simctl "$devices_dir" list devices --json > "$snapshot" 2>> "$LOG_FILE" || return 2
+  jobs_clean_simulator_rows "$snapshot" "$devices_dir" > "$snapshot.rows" 2>> "$LOG_FILE" || return 2
+  jobs_clean_simulator_missing "$devices_dir" "$uuid" || check_result=$?
+  (( check_result == 0 )) || return "$check_result"
+  /usr/bin/grep -Fxq -- "$uuid"$'\t'"$expected_state" "$snapshot.rows" && return 0
+  # 关闭命令假成功时不能把仍在运行的损坏设备当作清理完成。
+  if [[ "$expected_state" == Shutdown ]] && /usr/bin/grep -Fxq -- "$uuid"$'\tBooted' "$snapshot.rows"; then
+    return 2
+  fi
+  return 1
+}
+# 仅注销定义或目录已丢失的 iOS 设备；残留数据备份验证成功后才交给 simctl 删除。
+jobs_clean_orphaned_simulators() {
+  emulate -L zsh
+  (( JOBS_CLEAN_CONFIRMED == 1 )) || return 1
+  local devices_dir="${HOME:A}/Library/Developer/CoreSimulator/Devices" scan_dir="" backup_dir=""
+  local uuid="" device_state="" entry="" result=0 query_result=0
+  local -i candidates=0 removed=0 failed=0 skipped=0
+  scan_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/JobsClean-SimulatorScan.XXXXXXXX")" || return 1
+  jobs_clean_simctl "$devices_dir" list devices --json > "$scan_dir/before.json" 2>> "$LOG_FILE" || query_result=$?
+  if (( query_result == 127 )); then
+    info_echo '未安装可用的 Xcode simctl，跳过模拟器登记清理。'
+    return 0
+  fi
+  if (( query_result != 0 )) || ! jobs_clean_simulator_rows "$scan_dir/before.json" "$devices_dir" > "$scan_dir/before.rows" 2>> "$LOG_FILE"; then
+    warn_echo "模拟器清单读取失败，未注销设备；诊断：$scan_dir"
+    return 1
+  fi
+  info_echo '正在检查 CoreSimulator 中实体已缺失的 iOS 模拟器登记…'
+  while IFS=$'\t' read -r uuid device_state; do
+    [[ -n "$uuid" ]] || continue
+    result=0
+    jobs_clean_simulator_missing "$devices_dir" "$uuid" || result=$?
+    (( result != 1 )) || continue
+    if (( result == 2 )) || [[ "$device_state" != Shutdown && "$device_state" != Booted ]]; then
+      ((skipped += 1))
+      (( result != 2 )) || ((failed += 1))
+      warn_echo "设备路径不可靠或正在转换状态，保留：$uuid ($device_state)"
+      continue
+    fi
+    ((candidates += 1))
+    result=0
+    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$device_state" "$scan_dir/$uuid.precheck.json" || result=$?
+    if (( result != 0 )); then
+      ((skipped += 1))
+      (( result != 2 )) || ((failed += 1))
+      warn_echo "设备已变化或无法复检，保留：$uuid"
+      continue
+    fi
+    if [[ -z "$backup_dir" ]]; then
+      if [[ -L "$HOME/.Trash" || ! -d "$HOME/.Trash" || ! -w "$HOME/.Trash" ]] ||
+         ! backup_dir="$(/usr/bin/mktemp -d "$HOME/.Trash/JobsClean-SimulatorOrphans-XXXXXXXX")" ||
+         ! /bin/cp "$scan_dir/before.json" "$backup_dir/inventory-before.json"; then
+        error_echo '模拟器清理备份不可用，已停止注销。'
+        return 1
+      fi
+      note_echo "模拟器清理备份：$backup_dir"
+    fi
+    if [[ "$device_state" == Booted ]]; then
+      if ! jobs_clean_simctl "$devices_dir" shutdown "$uuid" >> "$LOG_FILE" 2>&1; then
+        ((failed += 1))
+        warn_echo "损坏设备关闭失败，保留：$uuid"
+        continue
+      fi
+      device_state=Shutdown
+    fi
+    result=0
+    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$device_state" "$scan_dir/$uuid.shutdown.json" || result=$?
+    if (( result != 0 )); then
+      ((skipped += 1))
+      (( result != 2 )) || ((failed += 1))
+      warn_echo "关闭后设备已变化或无法复检，保留：$uuid"
+      continue
+    fi
+    entry="$devices_dir/$uuid"
+    if [[ -d "$entry" ]]; then
+      if ! /usr/bin/ditto "$entry" "$backup_dir/$uuid" >> "$LOG_FILE" 2>&1 ||
+         ! /usr/bin/diff -qr "$entry" "$backup_dir/$uuid" >> "$LOG_FILE" 2>&1; then
+        ((failed += 1))
+        warn_echo "残留数据备份校验失败，保留：$uuid"
+        continue
+      fi
+    fi
+    result=0
+    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$device_state" "$scan_dir/$uuid.delete.json" || result=$?
+    if (( result != 0 )) || { [[ -d "$entry" ]] && ! /usr/bin/diff -qr "$entry" "$backup_dir/$uuid" >> "$LOG_FILE" 2>&1; }; then
+      ((skipped += 1))
+      (( result != 2 )) || ((failed += 1))
+      warn_echo "删除前设备或数据已变化，保留：$uuid"
+      continue
+    fi
+    if ! jobs_clean_simctl "$devices_dir" delete "$uuid" >> "$LOG_FILE" 2>&1 ||
+       ! jobs_clean_simctl "$devices_dir" list devices --json > "$scan_dir/$uuid.after.json" 2>> "$LOG_FILE" ||
+       ! jobs_clean_simulator_rows "$scan_dir/$uuid.after.json" "$devices_dir" > "$scan_dir/$uuid.after.rows" 2>> "$LOG_FILE" ||
+       /usr/bin/grep -q -- "^$uuid"$'\t' "$scan_dir/$uuid.after.rows"; then
+      ((failed += 1))
+      warn_echo "设备注销失败或登记仍存在：$uuid；详情：$scan_dir"
+      continue
+    fi
+    ((removed += 1))
+    gray_echo "已注销实体缺失的模拟器：$uuid"
+  done < "$scan_dir/before.rows"
+  info_echo "模拟器登记检查：候选 $candidates，已注销 $removed，保留 $skipped，失败 $failed；诊断：$scan_dir"
+  (( failed == 0 ))
 }
 # 按 Homebrew 当前策略信任 FVM tap，避免 cleanup 扫描阶段反复提示未信任。
 jobs_clean_trust_fvm_tap_if_required() {
@@ -404,6 +594,7 @@ clean() {
   local hist_file="${old_histfile:-$HOME/.zsh_history}"
   local old_histsize="${HISTSIZE:-10000}"
   local old_savehist="${SAVEHIST:-$old_histsize}"
+  local simulator_result=0
   local file
   local history_files=(
     "$hist_file"
@@ -423,6 +614,7 @@ clean() {
   done
 
   jobs_clean_move_indexed_build_apps_to_trash
+  jobs_clean_orphaned_simulators || simulator_result=$?
   jobs_clean_unregister_non_macos_development_apps
   jobs_clean_refresh_application_lists
   jobs_clean_homebrew_cleanup
@@ -439,19 +631,23 @@ clean() {
   printf '\033[H\033[2J\033[3J'
   printf '\033]1337;ClearScrollback\007'
   printf '\033[H'
+  if (( simulator_result != 0 )); then
+    warn_echo "模拟器登记清理未全部完成，详情见：$LOG_FILE"
+  fi
+  return "$simulator_result"
 }
 # ---------- 主流程统一收口 ----------
 # 为被 entrypoints.command 加载的场景编排完整 clean 流程。
 jobs_clean_main() {
   show_script_intro_and_wait # 先说明用户缓存、终端历史和应用登记清理范围，并等待确认。
   jobs_clean_prepare_runtime # 确认后再初始化 zsh 选项与本次日志。
-  clean "$@" # 清理终端历史、失效开发 App 登记、Homebrew 和用户缓存。
+  clean "$@" # 清理终端历史、失效模拟器与开发 App 登记、Homebrew 和用户缓存。
 }
 # 统一收口可独立执行的 clean 业务流程。
 main() {
   show_script_intro_and_wait # 先说明用户缓存、终端历史和应用登记清理范围，并等待确认。
   jobs_clean_prepare_runtime # 确认后再初始化 zsh 选项与本次日志。
-  clean "$@" # 清理终端历史、失效开发 App 登记、Homebrew 和用户缓存。
+  clean "$@" # 清理终端历史、失效模拟器与开发 App 登记、Homebrew 和用户缓存。
 }
 # 初始化脚本运行环境，并集中承载原有的顶层执行逻辑。
 initialize_script_module() {

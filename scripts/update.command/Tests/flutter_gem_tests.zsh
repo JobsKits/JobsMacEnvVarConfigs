@@ -63,11 +63,14 @@ case "$*" in
 esac
 MOCK_FLUTTER_SCRIPT
   /bin/chmod +x "$MOCK_FLUTTER"
+  # 网络策略由独立SDK夹具验证；本回归只执行已限定的假Flutter，避免触碰真实网络。
+  function jobs_flutter_sdk_command() { "$@"; }
   function jobs_update_has() { return 1; }
   function jobs_update_find_external_command() { print -r -- "$MOCK_FLUTTER"; }
   function jobs_update_flutter_release_verified_quarantine() { print -r -- 'quarantine' >> "$TEST_CASE_CALLS"; }
   function jobs_update_repair_gem_extensions() { return 0; }
-  function gem() {
+  function jobs_gemext_find_ruby() { print -r -- "$MOCK_RUBY_PATH"; }
+  function jobs_update_gem() {
     print -r -- "gem|$*" >> "$TEST_CASE_CALLS"
     case "$*" in
       env)
@@ -86,6 +89,10 @@ MOCK_FLUTTER_SCRIPT
         fi
         ;;
       update*)
+        if [[ " $* " != *' --no-document '* ]]; then
+          print -u2 -r -- 'ERROR: RDoc NoMethodError while generating ri documentation'
+          return 1
+        fi
         : > "$TEST_CASE_DIR/gem-updated"
         return "$MOCK_GEM_RESULT"
         ;;
@@ -111,7 +118,7 @@ assert_no_call() {
 # 在共享 home 可写时保留原安装来源和明确验证的写入位置。
 test_gem_shared() {
   jobs_update_gem_packages 'gem update' || return 1
-  assert_call "gem|update --no-user-install --install-dir $MOCK_GEM_HOME --bindir $MOCK_GEM_BIN" || return 1
+  assert_call "gem|update --no-user-install --install-dir $MOCK_GEM_HOME --bindir $MOCK_GEM_BIN --no-document" || return 1
   assert_no_call '--user-install --bindir'
 }
 # 复现日志中的只读 rdoc 插件；必须回退用户目录而不是发起 sudo。
@@ -119,7 +126,7 @@ test_gem_readonly_plugin() {
   print -r -- 'old plugin' > "$MOCK_GEM_HOME/plugins/rdoc_plugin.rb"
   /bin/chmod 400 "$MOCK_GEM_HOME/plugins/rdoc_plugin.rb"
   jobs_update_gem_packages 'gem update' || return 1
-  assert_call "gem|update --user-install --bindir $MOCK_GEM_USER/bin" || return 1
+  assert_call "gem|update --user-install --bindir $MOCK_GEM_USER/bin --no-document" || return 1
   [[ ":$PATH:" == *":$MOCK_GEM_USER/bin:"* ]] || return 1
   [[ "$(/bin/cat "$MOCK_GEM_HOME/plugins/rdoc_plugin.rb")" == 'old plugin' ]] || return 1
   assert_no_call 'sudo'

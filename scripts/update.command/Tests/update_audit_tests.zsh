@@ -265,15 +265,53 @@ MOCK_PYTHON
   }
   function jobs_update_has() { return 1; }
 }
-# 托管 Python 调用只读模式，并隔离外层遗留的准备授权。
-test_python_trust_readonly() {
+# 全量升级明确授权 Python 维护，pip 仍遵守包管理器的归属。
+test_python_trust_unattended() {
   install_python_mocks || return 1
   local _JOBS_PYTHON_CONFIRMED_PROCESS=old-authorization
   JOBS_UPDATE_TRUST_MODE=1
   export AUDIT_MOCK_MANAGED_MARKER='/mock/stdlib/EXTERNALLY-MANAGED'
   jobs_update_python_base </dev/null || return 1
-  audit_assert_call 'preflight|readonly|' || return 1
+  audit_assert_call 'preflight|unattended|old-authorization' || return 1
   audit_assert_call 'python|-m pip --version' && audit_assert_no_call 'pip install'
+}
+# -t 是当前入口的明确授权，必要动作不得再次 read；普通后台仍无授权。
+test_python_unattended_authorization() {
+  local DRY_RUN=0
+  JOBS_UPDATE_TRUST_MODE=0
+  _jobs_python_has_authorization </dev/null && return 1
+  JOBS_UPDATE_TRUST_MODE=1
+  _jobs_python_has_authorization </dev/null || return 1
+  function read() { print -r -- unexpected-read >> "$AUDIT_ROOT/calls"; return 99; }
+  _jobs_python_confirm_required '修复 Python 依赖' </dev/null || return 1
+  audit_assert_no_call unexpected-read || return 1
+  local _JOBS_PYTHON_READONLY=1
+  _jobs_python_has_authorization && return 1
+  _JOBS_PYTHON_READONLY=0
+  DRY_RUN=1
+  ! _jobs_python_has_authorization
+}
+# 缺失的业务 Python 只准备一次并复检，失败不得进入后续业务或循环重装。
+test_python_unattended_repair() {
+  JOBS_UPDATE_TRUST_MODE=1
+  JOBS_HOMEBREW_BIN=/mock/brew
+  local probe_count=0
+  function _jobs_python_prepare_brew() { return 0; }
+  function _jobs_python_find_formula_python() {
+    (( probe_count += 1 ))
+    (( probe_count > 1 ))
+  }
+  function _jobs_python_confirm_required() {
+    _jobs_python_has_authorization
+  }
+  function jobs_update_run_brew_adaptive_cmd() {
+    print -r -- "repair|$*" >> "$AUDIT_ROOT/calls"
+  }
+  function jobs_brew_activate() { return 0; }
+  function read() { return 99; }
+  jobs_python_ensure 3.11 python@3.13 </dev/null || return 1
+  audit_assert_equal 2 "$probe_count" || return 1
+  audit_assert_call 'repair|准备 Python：brew install python@3.13 plain /mock/brew install python@3.13'
 }
 # 已管理 Python 仅检查 pip 版本，不绕过 EXTERNALLY-MANAGED。
 test_python_managed_no_install() {
@@ -353,7 +391,7 @@ jobs_update_main
 SIGNAL_RUNNER
   AUDIT_SIGNAL_DIR="$signal_dir" /bin/zsh "$signal_dir/runner.zsh" "$AUDIT_UPDATE_SCRIPT" > "$signal_dir/stdout" 2>&1 &
   child_pid=$!
-  for attempt in {1..100}; do
+  for attempt in {1..500}; do
     [[ -f "$signal_dir/ready" ]] && break
     kill -0 "$child_pid" 2>/dev/null || break
     /bin/sleep 0.02
@@ -399,7 +437,9 @@ run_audit_tests() {
   run_audit_case 'Ruby配置失败保留结果' test_ruby_config_failure_propagates
   run_audit_case 'Brew健康发现成功' test_find_brew_uses_health_success
   run_audit_case 'Brew健康发现失败' test_find_brew_health_failure
-  run_audit_case 'Python托管只读且隔离旧授权' test_python_trust_readonly
+  run_audit_case 'Python全量维护且遵守包管理边界' test_python_trust_unattended
+  run_audit_case 'Python无人值守授权不再等待输入' test_python_unattended_authorization
+  run_audit_case 'Python无人值守补依赖后复检' test_python_unattended_repair
   run_audit_case '外部管理pip仅检查版本' test_python_managed_no_install
   run_audit_case '普通Python自升级pip' test_python_unmanaged_upgrade
   run_audit_case 'Python管理标记探测失败' test_python_marker_probe_failure

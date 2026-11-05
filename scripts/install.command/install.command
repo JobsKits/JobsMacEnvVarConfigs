@@ -227,6 +227,7 @@ jobs_intro_style() {
 }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 SCRIPT_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
+source "${SCRIPT_DIR:h}/_lib/【MacOS】FlutterSDK网络入口.zsh/【MacOS】FlutterSDK网络入口.zsh"
 SCRIPT_BASENAME=$(basename "$0" | sed 's/\.[^.]*$//')
 LOG_FILE="/tmp/${SCRIPT_BASENAME}.log"
 
@@ -1110,6 +1111,7 @@ brew_cask_after_install() {
 
   case "${cask_name}" in
     flutter)
+      jobs_flutter_sdk_command flutter --version >/dev/null || return $?
       run_flutter_doctor_and_android_licenses "Flutter" flutter
       ;;
     github-store)
@@ -1165,7 +1167,12 @@ component_brew_cask() {
 
   local brew_exit_code=0
 
-  if (( installed )); then
+  if [[ "$cask_name" == flutter ]]; then
+    local operation=install
+    (( ! installed )) || operation=upgrade
+    run_cmd "Flutter cask：${operation}（探测Brew原始制品）" jobs_flutter_sdk_command --brew-cask "$(command -v brew)" "$operation"
+    brew_exit_code=$?
+  elif (( installed )); then
     run_cmd "更新 brew cask：${cask_name}" brew upgrade --cask "${cask_name}"
     brew_exit_code=$?
   else
@@ -1177,6 +1184,7 @@ component_brew_cask() {
     brew_cask_after_install "${cask_name}"
   else
     warn_echo "brew cask：${cask_name} 安装 / 更新失败，跳过后置处理。"
+    [[ "$cask_name" != flutter ]] || return "$brew_exit_code"
   fi
 }
 # ---------- 部件：npm quicktype ----------
@@ -1528,9 +1536,13 @@ install() {
   TOTAL_STAGES=${#RUN_ITEMS[@]}
   CURRENT_STAGE=0
 
-  local item
+  local item item_result=0
   for item in "${RUN_ITEMS[@]}"; do
-    run_selected_item "${item}"
+    item_result=0
+    run_selected_item "${item}" || item_result=$?
+    if [[ "$item" == 'brew cask：flutter' ]] && (( item_result != 0 )); then
+      return "$item_result"
+    fi
   done
 
   finish_summary
@@ -1543,7 +1555,7 @@ jobs_install_main() {
   # 展示脚本说明并等待用户确认影响范围。
   jobs_install_show_readme_and_wait
   # 执行安装步骤，并保留命令失败信息供后续排查。
-  install "$@" || return 1
+  install "$@" || return $?
 
   # 执行当前流程中的独立业务步骤：pause_for_enter。
   pause_for_enter "👉 全部流程已执行完成。请按回车退出..."

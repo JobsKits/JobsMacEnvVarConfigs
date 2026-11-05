@@ -189,14 +189,15 @@ test_step_partial() {
   jobs_update_run_step '部分更新' partly_run || return 1
   assert_equal 1 "$JOBS_UPDATE_PARTIAL_STEPS" && assert_no_log '部分更新：完成'
 }
-# 无人值守没有授权时，绝不执行业务或等待密码。
+# 无人值守没有授权时，明确记录未完成，绝不等待密码。
 test_sudo_no_authorization() {
   function sudo() { print -r -- "$*" >> "$TEST_ROOT/calls"; print -u2 -r -- 'sudo: a password is required'; return 1; }
   JOBS_UPDATE_TRUST_MODE=1
   jobs_update_run_sudo_cmd '系统更新' forbidden-command
   assert_equal 1 "$?" || return 1
-  assert_equal 1 "$JOBS_UPDATE_SKIP_COUNT" || return 1
-  assert_equal 0 "$JOBS_UPDATE_COMMAND_COUNT" || return 1
+  assert_equal 0 "$JOBS_UPDATE_SKIP_COUNT" || return 1
+  assert_equal 1 "$JOBS_UPDATE_FAILURE_COUNT" || return 1
+  assert_equal 1 "$JOBS_UPDATE_COMMAND_COUNT" || return 1
   assert_equal '-n forbidden-command' "$(<"$TEST_ROOT/calls")"
 }
 # 授权通过后的业务失败不可误称为缺少权限。
@@ -255,20 +256,6 @@ test_git_invalid_ref_output() {
   jobs_update_run_cmd 'Git 验证' jobs_update_verify_git_current "$TEST_ROOT" origin
   assert_equal 1 "$?" && assert_no_log 'Git 验证：完成'
 }
-# .git 文件形式与带单引号目录应保持参数原样传递。
-test_repo_gitfile_and_quoted_path() {
-  local repo_dir="$TEST_ROOT/repo ' quote"
-  /bin/mkdir -p "$repo_dir" || return 1
-  print -r -- 'gitdir: mock' > "$repo_dir/.git"
-  install_git_mock
-  jobs_update_repo mock https://example.invalid/mock "$repo_dir" || return 1
-  /usr/bin/grep -Fxq -- "-C|${repo_dir}|pull|--ff-only" "$TEST_ROOT/calls"
-}
-# 缺少仓库只报跳过，不声称更新成功。
-test_repo_absent() {
-  jobs_update_run_step '仓库更新' jobs_update_repo mock https://example.invalid/mock "$TEST_ROOT/absent" || return 1
-  assert_equal 1 "$JOBS_UPDATE_SKIPPED_STEPS" && assert_no_log '仓库更新：完成'
-}
 # 新版 Dart 参数存在时使用全缓存模式。
 test_dart_all_supported() {
   function dart() {
@@ -309,9 +296,9 @@ test_dart_no_pubspec() {
 }
 # 只选择两个假业务步骤，核对失败后继续与最终退出码。
 test_global_summary_failure() {
-  function jobs_update_prompt_run() { [[ "$1" == *'Oh My Zsh'* || "$1" == *'JobsKits'* ]]; }
+  function jobs_update_prompt_run() { [[ "$1" == *'Oh My Zsh'* || "$1" == *'Git LFS'* ]]; }
   function jobs_update_oh_my_zsh() { jobs_update_run_cmd '上游失败' print -r -- 'fatal: blocked' || true; }
-  function jobs_update_jobs_repos() { jobs_update_run_cmd '后续继续' print -r -- continued; }
+  function jobs_update_git_lfs_init() { jobs_update_run_cmd '后续继续' print -r -- continued; }
   update
   assert_equal 1 "$?" || return 1
   assert_equal 1 "$JOBS_UPDATE_FAILED_STEPS" || return 1
@@ -365,8 +352,6 @@ run_tests() {
   run_case 'Oh My Zsh落后远端' test_omz_stale
   run_case 'Oh My Zsh远端已核验' test_omz_current
   run_case 'Git异常响应' test_git_invalid_ref_output
-  run_case 'Git文件与单引号路径' test_repo_gitfile_and_quoted_path
-  run_case '缺少仓库' test_repo_absent
   run_case 'Dart新版全缓存参数' test_dart_all_supported
   run_case 'Dart旧版兼容' test_dart_legacy
   run_case 'Dart No pubspec误报' test_dart_no_pubspec

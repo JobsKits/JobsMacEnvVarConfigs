@@ -12,9 +12,11 @@
 - [二、运行](#jobs-toc-heading-3)
 - [三、结构约定](#jobs-toc-heading-4)
 - [四、失效 App 图标清理边界](#jobs-toc-heading-5)
-- [五、流程图](#jobs-toc-heading-6)
-- [六、日志文件](#jobs-toc-heading-7)
-- [七、风险说明](#jobs-toc-heading-8)
+- [五、iOS 模拟器残留登记](#simulator-orphans)
+- [六、流程图](#jobs-toc-heading-7)
+- [七、日志文件](#jobs-toc-heading-8)
+- [八、风险说明](#jobs-toc-heading-9)
+- [九、隔离验证](#validation)
 
 </details>
 <!-- jobs-toc:end -->
@@ -29,11 +31,12 @@ Homebrew 发现和健康检查封装在当前脚本内部，不依赖外置模�
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-该脚本会连续完成五类清理：
+该脚本会连续完成六类清理：
 
 - 清空 zsh 历史和 `zsh_sessions` 残留。
 - 将 Spotlight 已收录的 iPhone、Apple TV、Apple Watch 和 Apple Vision 构建 App 移入废纸篓，从文件源头清理带禁止标记、无法在 [**macOS**](https://www.apple.com/macos/) 打开的图标。
 - 定向注销 `LaunchServices` 中的非 macOS 构建 App 和 iOS Simulator App 记录。
+- 检查 CoreSimulator 中目录或 `device.plist` 已缺失的 iOS 模拟器，备份残留数据后按 UUID 注销登记。
 - 检测到 [**Homebrew**](https://brew.sh/) 时执行 `brew cleanup`。
 - 清空当前用户 `Library/Caches` 内的文件、子目录和隐藏项，保留 `Caches` 目录本身。
 
@@ -66,11 +69,24 @@ clean [参数...]
 
 - 只移动 Spotlight 已收录、位于当前用户目录内、且路径符合 Xcode `Build/Products` / `build` 输出特征的 iPhone、Apple TV、Apple Watch 和 Apple Vision `.app`。
 - 构建 App 不直接删除，而是按原绝对路径结构移入废纸篓中的 `JobsClean-DevelopmentApps-*` 目录，可手动恢复；也可以通过 Xcode / Flutter 重新构建。
-- `CoreSimulator` 设备容器中的 App 只注销 `LaunchServices` 记录，不移动实体；`Applications` 里的正常 App 始终排除。
+- 正常 `CoreSimulator` 设备容器中的 App 只注销 `LaunchServices` 记录，不移动实体；实体已缺失的设备按[残留登记规则](#simulator-orphans)另行备份并注销，`Applications` 里的正常 App 始终排除。
 - 完成后会短暂重启 `Spotlight`、`corespotlightd`、`sharedfilelistd` 和 `Dock`，图标列表会重新加载，Dock 可能闪烁一次。
 - 后续重新运行 Xcode 或 Simulator 时，开发 App 可能被系统再次登记；再次执行 `clean` 即可清理。
 
-## <span id="jobs-toc-heading-6" data-jobs-toc="v2">五、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## 五、<span id="simulator-orphans">iOS 模拟器残留登记</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+第三方清理工具直接移除模拟器文件后，CoreSimulator 服务仍可能列出原设备。这里的“残留”是系统设备登记，不是普通文件快捷方式；脚本通过当前 Xcode 的 `simctl` 注销，避免只删磁盘文件后留下失配记录。
+
+- 只处理当前用户默认 `Library/Developer/CoreSimulator/Devices` 设备集中的 iOS 设备，先校验 JSON、UUID、状态和精确 `dataPath`。
+- 只有设备目录或 `device.plist` 确认不存在才进入清理。完整设备、仅 Runtime 不可用的设备，以及保留 `device.plist` 但尚无 `data` 目录的设备均保留；软链接、无读取权限、查询失败或不明确状态会跳过并记录。
+- 写操作前重新读取清单和磁盘状态。损坏设备若仍标为 `Booted`，只按该 UUID 关闭，再复检；正在创建、启动或关闭中的设备保留，后续可重新执行 `clean`。
+- 首个待注销项出现时，在 `$HOME/.Trash/JobsClean-SimulatorOrphans-*` 保存原设备清单。仍存在的设备目录先完整备份并逐项比较，删除前再次确认数据未变化；备份或复检失败就保留源数据。缺失的旧文件无法通过这份备份还原，备份仅保存本次清理前仍存在的内容。
+- 最后逐个执行 `simctl --set <默认设备集> delete <UUID>`，并确认该 UUID 已从新清单消失。不使用 `delete all` / `delete unavailable`，不删除共享 Runtime，也不重启 CoreSimulator 服务。
+- 未安装可用的 Xcode `simctl` 时跳过。单次系统调用限时 30 秒；注销失败、查询异常或备份校验失败会进入日志，并使 `clean` 最终返回非零状态，原有其它清理步骤继续执行。
+
+Device Hub 中看不到设备时，也要检查过滤器是否为 `All Devices` / `Simulators`，并展开设备分组；“仅真机”会隐藏模拟器，界面空白不代表磁盘或系统登记已清空。
+
+## <span id="jobs-toc-heading-7" data-jobs-toc="v2">六、流程图 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```mermaid
 flowchart TD
@@ -83,8 +99,10 @@ flowchart TD
     C --> D
     E[将 Spotlight 收录的非 macOS 构建 App 移入废纸篓]
     D --> E
+    S[备份并注销实体缺失的 iOS 模拟器登记]
+    E --> S
     F[注销开发 App 并回收 LaunchServices 失效记录]
-    E --> F
+    S --> F
     G[刷新 Spotlight 和 Dock]
     F --> G
     H[检测 Homebrew]
@@ -97,7 +115,7 @@ flowchart TD
     J --> K
 ```
 
-## <span id="jobs-toc-heading-7" data-jobs-toc="v2">六、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-8" data-jobs-toc="v2">七、日志文件 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 运行日志默认写入 `$TMPDIR`，文件名通常来自脚本名去掉扩展名：
 
@@ -105,12 +123,25 @@ flowchart TD
 $TMPDIR/clean.log
 ```
 
-## <span id="jobs-toc-heading-8" data-jobs-toc="v2">七、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+模拟器扫描与逐设备复检 JSON 保存在日志中打印的系统临时目录 `JobsClean-SimulatorScan.*`；有注销候选时，原清单与残留目录备份保存在前述废纸篓目录。
+
+## <span id="jobs-toc-heading-9" data-jobs-toc="v2">八、风险说明 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 - zsh 历史会被清空，无法从脚本自动恢复。
 - 当前用户 `Library/Caches` 内容会直接删除，应用后续可能重新生成缓存；目录缺失时跳过，`Library` 或 `Caches` 为符号链接时跳过。缓存内容中的符号链接只删除链接本身，不清理其外部目标。
 - 无权限删除的缓存会保留并记录失败路径，后续清理与清屏继续执行；详细系统错误写入日志，不使用 `sudo` 提权。
 - 非 macOS 构建 `.app` 会离开原构建目录；它们属于可重新生成的构建产物，可从废纸篓恢复或重新构建。
 - LaunchServices 只注销符合开发输出路径特征的非 macOS App，不使用全局 `-kill` 重建，避免扰动正常 App 的打开方式关联。
+- 注销实体已缺失的模拟器会移除其设备登记；残留数据只有备份成功后才删除。正常设备、真机和共享 Runtime 保留，清空废纸篓前请自行核对备份。
+
+## 九、<span id="validation">隔离验证</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+在本目录运行[模拟器登记回归](./Tests/【MacOS】SimulatorOrphanTests.zsh/README.md)：
+
+```shell
+/bin/zsh './Tests/【MacOS】SimulatorOrphanTests.zsh/【MacOS】SimulatorOrphanTests.zsh'
+```
+
+用例使用临时 HOME、合成 JSON 和假 `simctl`，覆盖完整设备保留、残留登记注销、备份失败、并发恢复、工具假成功、权限与软链接、幂等及失败传播；不会执行真实 `clean` 的缓存／历史清理，也不会变更真实设备和 Runtime。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

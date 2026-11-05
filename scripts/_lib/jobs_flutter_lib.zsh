@@ -1,4 +1,5 @@
 # JobsMacEnv Flutter private library. Do not call directly.
+source "${${(%):-%x}:A:h}/【MacOS】FlutterSDK网络入口.zsh/【MacOS】FlutterSDK网络入口.zsh"
 
 # 解析 PATH 中的真实外部命令，跳过当前脚本自身，避免 flutter 自定义入口递归调用自己。
 # 输出当前脚本内的 Homebrew 健康诊断。
@@ -195,13 +196,13 @@ jobs_flutter_flutter_impl() {
   root="$(jobs_flutter_project_root 2>/dev/null || true)"
 
   if [[ -n "$root" && -x "$root/.fvm/flutter_sdk/bin/flutter" ]]; then
-    command "$root/.fvm/flutter_sdk/bin/flutter" "$@"
+    jobs_flutter_sdk_command "$root/.fvm/flutter_sdk/bin/flutter" "$@"
     return $?
   fi
 
   if [[ -n "$root" && ( -f "$root/.fvmrc" || -f "$root/.fvm/fvm_config.json" ) ]]; then
     if command -v fvm >/dev/null 2>&1; then
-      command fvm flutter "$@"
+      jobs_flutter_sdk_command fvm flutter "$@"
       return $?
     fi
     print -u2 "✖ 检测到 FVM 项目，但找不到 fvm 命令。请先安装 fvm。"
@@ -211,7 +212,7 @@ jobs_flutter_flutter_impl() {
   local external_flutter=""
   external_flutter="$(jobs_flutter_find_external_command flutter 2>/dev/null || true)"
   if [[ -n "$external_flutter" ]]; then
-    "$external_flutter" "$@"
+    jobs_flutter_sdk_command "$external_flutter" "$@"
     return $?
   fi
 
@@ -228,13 +229,13 @@ jobs_flutter_dart_impl() {
   root="$(jobs_flutter_project_root 2>/dev/null || true)"
 
   if [[ -n "$root" && -x "$root/.fvm/flutter_sdk/bin/dart" ]]; then
-    command "$root/.fvm/flutter_sdk/bin/dart" "$@"
+    jobs_flutter_sdk_command "$root/.fvm/flutter_sdk/bin/dart" "$@"
     return $?
   fi
 
   if [[ -n "$root" && ( -f "$root/.fvmrc" || -f "$root/.fvm/fvm_config.json" ) ]]; then
     if command -v fvm >/dev/null 2>&1; then
-      command fvm dart "$@"
+      jobs_flutter_sdk_command fvm dart "$@"
       return $?
     fi
     print -u2 "✖ 检测到 FVM 项目，但找不到 fvm 命令。请先安装 fvm。"
@@ -244,7 +245,7 @@ jobs_flutter_dart_impl() {
   local external_dart=""
   external_dart="$(jobs_flutter_find_external_command dart 2>/dev/null || true)"
   if [[ -n "$external_dart" ]]; then
-    "$external_dart" "$@"
+    jobs_flutter_sdk_command "$external_dart" "$@"
     return $?
   fi
 
@@ -309,7 +310,7 @@ jobs_flutter_check_impl() {
   echo; java -version; echo
   echo "JAVA_HOME=$JAVA_HOME"; echo
 
-  fvm use 3.24.5 --force
+  jobs_flutter_sdk_command fvm use 3.24.5 --force
   jobs_flutter_flutter_impl doctor -v
 }
 
@@ -475,12 +476,12 @@ jobs_flutter_get_project_dir_interactive() {
 jobs_flutter_set_flutter_cmd() {
   export PATH="$HOME/.pub-cache/bin:$PATH"
   if command -v fvm >/dev/null 2>&1; then
-    flutter_cmd=(fvm flutter)
+    flutter_cmd=(jobs_flutter_sdk_command fvm flutter)
   else
     local external_flutter=""
     external_flutter="$(jobs_flutter_find_external_command flutter 2>/dev/null || true)"
     if [[ -n "$external_flutter" ]]; then
-      flutter_cmd=("$external_flutter")
+      flutter_cmd=(jobs_flutter_sdk_command "$external_flutter")
     else
       flutter_cmd=(jobs_flutter_flutter_impl)
     fi
@@ -505,9 +506,17 @@ jobs_flutter_read_project_flutter_version() {
     v="$(jq -r '.flutter // .flutterSdkVersion // empty' .fvm/fvm_config.json 2>/dev/null | tr -d '[:space:]')"
     [[ -n "$v" ]] && echo "$v" && return 0
   fi
-  if [[ -x .fvm/flutter_sdk/bin/flutter ]]; then
-    v="$(.fvm/flutter_sdk/bin/flutter --version 2>/dev/null | grep -Eo 'Flutter [0-9]+\.[0-9]+\.[0-9]+' | awk '{print $2}' | head -n1)"
-    [[ -n "$v" ]] && echo "$v" && return 0
+  # 版本发现只读可信本地metadata，不能为显示版本触发SDK自举。
+  if [[ -f .fvm/flutter_sdk/bin/cache/flutter.version.json ]] && command -v jq >/dev/null 2>&1; then
+    v="$(jq -r '.frameworkVersion // empty' .fvm/flutter_sdk/bin/cache/flutter.version.json 2>/dev/null)"
+  elif [[ -f .fvm/flutter_sdk/version ]]; then
+    v="$(<.fvm/flutter_sdk/version)"
+  elif [[ -d .fvm/flutter_sdk/.git || -f .fvm/flutter_sdk/.git ]]; then
+    v="$(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_COMMON_DIR git --no-optional-locks -c core.fsmonitor=false -C .fvm/flutter_sdk describe --tags --exact-match HEAD 2>/dev/null || true)"
+  fi
+  if [[ "$v" =~ '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.+-]+)?$' ]]; then
+    print -r -- "$v"
+    return 0
   fi
   return 1
 }
@@ -532,8 +541,9 @@ jobs_flutter_ensure_fvm_and_flutter_version_before_build() {
   else
     echo "[INFO] 项目未绑定 Flutter 版本，尝试获取 stable 列表"
     local versions latest pick
-    versions="$(curl -fsSL https://storage.googleapis.com/flutter_infra_release/releases/releases_macos.json \
+    versions="$(jobs_flutter_sdk_versions \
       | jq -r '.releases[] | select(.channel=="stable") | .version' | sort -V | uniq | tac)"
+    [[ -n "$versions" ]] || { echo "[ERROR] Flutter发布清单未提供有效stable版本，未写项目配置"; return 1; }
     latest="$(echo "$versions" | head -n1)"
     if command -v fzf >/dev/null 2>&1; then
       pick="$(echo "$versions" | fzf --prompt='选择 Flutter 版本：' --height=50% --border --ansi)"
@@ -548,8 +558,8 @@ jobs_flutter_ensure_fvm_and_flutter_version_before_build() {
   fi
 
   echo "[INFO] 安装 Flutter $desired_version"
-  fvm install "$desired_version" || { echo "[ERROR] fvm install 失败"; return 1; }
-  fvm use "$desired_version" --force || { echo "[ERROR] fvm use 失败"; return 1; }
+  jobs_flutter_sdk_command fvm install "$desired_version" || { echo "[ERROR] fvm install 失败"; return 1; }
+  jobs_flutter_sdk_command fvm use "$desired_version" --force || { echo "[ERROR] fvm use 失败"; return 1; }
   jobs_flutter_set_flutter_cmd
   echo "[OK] Flutter $desired_version 就绪"
 }

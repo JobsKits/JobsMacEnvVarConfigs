@@ -25,6 +25,7 @@
 - [十五、网络前置检查](#jobs-toc-heading-16)
 - [十六、结构约定](#jobs-toc-heading-17)
 - [十七、流程图](#jobs-toc-heading-18)
+  - [Flutter SDK获取与网络](#jobs-toc-heading-19)
 
 </details>
 <!-- jobs-toc:end -->
@@ -736,3 +737,7 @@
 [**Homebrew**](https://brew.sh/) 安装路径由用户选择：已有可运行安装时复用；确实需要安装时先强提示，只有精确输入大写 `YES` 才选择系统标准目录，其它输入或直接回车选择当前用户的 `.local/homebrew`。`YES` 只表示选择路径，权限与密码由官方安装器实际处理；有管理员权限也可以选用户目录。选定路径失败立即停止，不自动切换；`Ctrl+C` / 输入结束取消整个任务。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
+
+### <span id="jobs-toc-heading-19" data-jobs-toc="v2">Flutter SDK获取与网络</span><!-- jobs-toc:heading-end -->
+
+Flutter SDK首次自举、FVM SDK安装和Flutter维护在获取前探测真实来源并选择当前任务路线，网络失败持续重试，Ctrl+C/终止信号取消。健康缓存可直接使用；run/pub/analyze/build等业务只执行一次。库被source时不下载、不更改父Shell代理或源。Brew Flutter cask通过`brew info --json=v2 --cask flutter`读取真实URL，仅比较连接路线，Brew原URL和SHA校验保留；更新入口继续沿用原双栈回退及结果统计。固定FVM版本缓存继续保留pin。部署时需携带完整`scripts/_lib`内三个SDK网络模块目录。

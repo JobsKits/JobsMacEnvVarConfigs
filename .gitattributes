@@ -13,6 +13,7 @@
 "/scripts/check.command/README.md" filter=jobs-markdown-toc
 "/scripts/check1.command/README.md" filter=jobs-markdown-toc
 "/scripts/clean.command/README.md" filter=jobs-markdown-toc
+"/scripts/clean.command/Tests/【MacOS】SimulatorOrphanTests.zsh/README.md" filter=jobs-markdown-toc
 "/scripts/clr.command/README.md" filter=jobs-markdown-toc
 "/scripts/clr.command/chrome-extension/README.md" filter=jobs-markdown-toc
 "/scripts/code.command/README.md" filter=jobs-markdown-toc
@@ -46,6 +47,8 @@
 "/scripts/ts.command/README.md" filter=jobs-markdown-toc
 "/scripts/tts.command/README.md" filter=jobs-markdown-toc
 "/scripts/update.command/README.md" filter=jobs-markdown-toc
+"/scripts/update.command/Tests/android_sdk_tests.zsh/README.md" filter=jobs-markdown-toc
+"/scripts/update.command/Tests/ruby_runtime_tests.zsh/README.md" filter=jobs-markdown-toc
 "/scripts/x.command/README.md" filter=jobs-markdown-toc
 "/scripts/zz.command/README.md" filter=jobs-markdown-toc
 "/scripts/【MacOS】⚙️配置全局Markdown目录过滤器.command/README.md" filter=jobs-markdown-toc

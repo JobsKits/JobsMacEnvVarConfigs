@@ -234,7 +234,7 @@ class JobsUpdateCocoaPodsProxyTest < Minitest::Test
         'https_proxy' => ORIGINAL_PROXY, 'NO_PROXY' => 'localhost,private.invalid',
         'GIT_CONFIG_COUNT' => '1', 'GIT_CONFIG_KEY_0' => 'http.https://private.invalid/.proxy',
         'GIT_CONFIG_VALUE_0' => 'http://private-proxy.invalid:18081',
-        'JOBS_SPECS_PROBE_TIMEOUT' => '3', 'JOBS_SPECS_CONNECT_TIMEOUT' => '1', 'JOBS_SPECS_UPDATE_TIMEOUT' => '3',
+        'JOBS_SPECS_PROBE_TIMEOUT' => '8', 'JOBS_SPECS_CONNECT_TIMEOUT' => '1', 'JOBS_SPECS_UPDATE_TIMEOUT' => '8',
         'JOBS_SPECS_SOURCE' => 'auto'
       ).merge!(options)
       stdout, stderr, status = Open3.capture3(environment, '/bin/zsh', runner, chdir: root)

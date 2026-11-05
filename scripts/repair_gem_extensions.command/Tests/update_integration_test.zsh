@@ -88,7 +88,7 @@ MOCK_UPDATE_RUBY
 install_update_mocks() {
   function jobs_update_has() {
     case "$1" in
-      gem) (( MOCK_GEM_PRESENT == 1 )) ;;
+      gem|ruby) (( MOCK_GEM_PRESENT == 1 )) ;;
       rbenv) (( MOCK_RBENV_PRESENT == 1 )) ;;
       pod) (( MOCK_POD_PRESENT == 1 )) ;;
       *) return 1 ;;
@@ -112,6 +112,12 @@ install_update_mocks() {
       update*) print -r -- "gem:$*" >> "$TEST_ROOT/events" ;;
       *) print -u2 -r -- "禁止的 gem 替身调用：$*"; return 91 ;;
     esac
+  }
+  function jobs_gemext_find_ruby() {
+    print -r -- "$TEST_ROOT/bin/ruby"
+  }
+  function jobs_update_gem() {
+    gem "$@"
   }
   function jobs_update_run_cmd() {
     shift
@@ -161,7 +167,7 @@ test_update_sequence() {
   local result=0 expected=''
   reset_update_mock
   jobs_update_ruby_base > "$TEST_ROOT/output" 2>&1 || result=$?
-  expected=$'rbenv:init\nrbenv:rehash\nworker:repair:1\ngem:update --system\ngem:update --no-user-install --install-dir '"$TEST_ROOT/gems --bindir $TEST_ROOT/bin"$'\nworker:repair:2'
+  expected=$'rbenv:init\nrbenv:rehash\nworker:repair:1\ngem:update --system --no-document\ngem:update --no-user-install --install-dir '"$TEST_ROOT/gems --bindir $TEST_ROOT/bin --no-document"$'\nworker:repair:2'
   expect_equal 0 "$result" '健康 Ruby 阶段成功'
   expect_equal "$expected" "$(<"$TEST_ROOT/events")" 'rbenv、修复、升级、复检顺序'
   expect_equal 2 "$(<"$TEST_ROOT/worker-count")" '健康环境升级前后仍各扫描一次'
@@ -216,7 +222,7 @@ test_cocoapods_sequence() {
   reset_update_mock
   jobs_update_gem_cocoapods > "$TEST_ROOT/output" 2>&1 || result=$?
   expect_equal 0 "$result" 'CocoaPods 升级与复检成功'
-  expect_equal "gem:update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin"$'\nworker:repair:1\nrepos:refresh' "$(<"$TEST_ROOT/events")" 'CocoaPods 工具升级、扩展复检、Specs 刷新顺序'
+  expect_equal "gem:update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin --no-document"$'\nworker:repair:1\nrepos:refresh' "$(<"$TEST_ROOT/events")" 'CocoaPods 工具升级、扩展复检、Specs 刷新顺序'
   reset_update_mock
   MOCK_WORKER_FAILURE_AT=1
   result=0

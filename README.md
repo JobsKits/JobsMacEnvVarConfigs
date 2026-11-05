@@ -1263,7 +1263,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 
 * 阅读说明并检查可用工具，按顺序展示系统工具、Homebrew、语言环境和依赖维护项目。
 * 逐项决定是否运行更新。
-  * 交互时回车跳过、非空输入执行；`-t` / `--trust` / `--unattended` 使用无人值守流程，不能无密码授权的步骤跳过。
+  * 交互时回车跳过、非空输入执行；`-t` / `--trust` / `--unattended` 自动执行全部维护项，必要依赖自动准备。终端启动时集中获取一次管理员授权并在本轮保活，后续使用 `sudo -n`；后台须已有授权，受限命令明确报告未完成。
 * 执行所选维护并记录结果。
   * CocoaPods 源按实际连通性选用并刷新对应缓存；发现 Ruby 原生扩展缺失时调用修复入口并保留备份。
 * 继续后续独立项目，最后汇总成功、跳过、失败与日志。
@@ -1456,10 +1456,11 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 
 ### <span id="jobs-toc-heading-61" data-jobs-toc="v2">[clean.command](./scripts/clean.command/clean.command)</span><!-- jobs-toc:heading-end -->
 
-> **目的：** 清理终端历史、会话缓存和用户缓存，并处理失效开发 App 登记。
+> **目的：** 清理终端历史、会话缓存和用户缓存，处理失效开发 App 与实体已缺失的 iOS 模拟器登记。
 
 * 阅读自述并确认本次清理范围。
 * 清除终端历史和会话数据，处理失效开发 App 的启动登记及对应失效产物。
+* 检查当前用户 iOS 模拟器的目录和定义，残留数据备份校验后按 UUID 注销失效登记；保留正常设备、真机与共享 Runtime。
 * 清理用户 `Library/Caches`，并处理 Homebrew 清理。
   * 缓存路径按脚本边界检查；没有 Homebrew 时跳过 `brew cleanup`。
 * 恢复历史记录设置，清空终端可见内容和滚动区，输出清理结果。

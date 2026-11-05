@@ -55,7 +55,7 @@
 | [`pods.command/`](./pods.command/README.md) | 选择本地 Pod / podspec，在独立检查环境运行 `pod lib lint`。 |
 | [`repair_gem_extensions.command/`](./repair_gem_extensions.command/README.md) | 默认检查缺失的 Ruby 原生扩展；显式修复时备份、重建、验证，失败恢复。 |
 | [`codemap.command/`](./codemap.command/README.md) | 为当前或一个 / 多个指定目录构建 CodeGraph 索引，支持拖入路径。 |
-| [`clean.command/`](./clean.command/README.md) | 清空 Shell 历史，处理失效 App 图标并执行其约定的本机清理。 |
+| [`clean.command/`](./clean.command/README.md) | 清空 Shell 历史和用户缓存，处理失效 App 图标，备份并注销实体已缺失的 iOS 模拟器登记。 |
 | [`clr.command/`](./clr.command/README.md) | 借助本地 Chrome 扩展清空下载记录，保留已下载文件。 |
 | [`dq.command/`](./dq.command/README.md) | 仅移除所选目标的 quarantine 标记；支持预览与处理后打开。 |
 | [`df.command/`](./df.command/README.md) | 以 dufs + Caddy 共享所选目录，支持只读 / 读写、认证与访问地址配置。 |

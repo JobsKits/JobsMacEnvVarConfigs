@@ -175,13 +175,19 @@ install_safe_wrappers() {
   function jobs_update_repair_gem_extensions() {
     return 0
   }
+  function jobs_gemext_find_ruby() {
+    print -r -- "$MOCK_ROOT/bin/ruby"
+  }
+  function jobs_update_gem() {
+    gem "$@"
+  }
   function find_brew_bin() {
     [[ "${MOCK_BREW_PRESENT:-1}" == 1 ]] || return 1
     print -r -- "$MOCK_ROOT/bin/brew"
   }
   function jobs_update_has() {
     case "$1" in
-      gem) [[ "${MOCK_GEM_PRESENT:-1}" == 1 ]] ;;
+      gem|ruby) [[ "${MOCK_GEM_PRESENT:-1}" == 1 ]] ;;
       pod) [[ "${MOCK_POD_PRESENT:-1}" == 1 ]] ;;
       *) command -v "$1" >/dev/null 2>&1 ;;
     esac
@@ -216,7 +222,7 @@ reset_fixture() {
   export MOCK_BREW_PRESENT=1 MOCK_BREW_INSTALLED_RESULT=0 MOCK_BREW_UPGRADE_RESULT=0 MOCK_BREW_INDEX_RESULT=0 MOCK_BREW_PREFIX="$TEST_ROOT"
   export MOCK_GEM_PRESENT=1 MOCK_GEM_INSTALLED_RESULT=0 MOCK_GEM_UPDATE_RESULT=0 MOCK_GEM_HOME="$TEST_ROOT/gems"
   export MOCK_POD_PRESENT=1 MOCK_SPECS_RESULT=0 JOBS_SPECS_SOURCE=auto
-  export JOBS_SPECS_PROBE_TIMEOUT=3 JOBS_SPECS_CONNECT_TIMEOUT=2 JOBS_SPECS_UPDATE_TIMEOUT=3
+  export JOBS_SPECS_PROBE_TIMEOUT=8 JOBS_SPECS_CONNECT_TIMEOUT=2 JOBS_SPECS_UPDATE_TIMEOUT=8
   JOBS_UPDATE_COCOAPODS_BREW_UPDATED=0
   : > "$TEST_ROOT/calls"
   : > "$TEST_ROOT/probes"
@@ -493,7 +499,7 @@ test_gem_managed() {
   stub_specs_refresh
   export MOCK_BREW_PRESENT=0
   jobs_update_gem_cocoapods || return 1
-  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin" || return 1
+  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin --no-document" || return 1
   assert_no_call 'sudo-wrapper|' || return 1
   assert_no_call 'brew|'
 }
@@ -502,7 +508,7 @@ test_brew_other_formula_only() {
   stub_specs_refresh
   export MOCK_BREW_INSTALLED_RESULT=1
   jobs_update_gem_cocoapods || return 1
-  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin" || return 1
+  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin --no-document" || return 1
   assert_no_call 'brew|upgrade'
 }
 # 权限不完整且用户目录无法安全确认时停止工具更新，不提权，独立规格源仍可维护。
@@ -533,7 +539,7 @@ test_mixed_installations() {
   stub_specs_refresh
   export MOCK_BREW_PREFIX="$TEST_ROOT/runtime"
   jobs_update_gem_cocoapods || return 1
-  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin" || return 1
+  assert_call "gem|update cocoapods --no-user-install --install-dir $TEST_ROOT/gems --bindir $TEST_ROOT/bin --no-document" || return 1
   assert_no_call 'brew|upgrade' || return 1
   assert_equal 0 "$JOBS_UPDATE_COCOAPODS_BREW_UPDATED"
 }

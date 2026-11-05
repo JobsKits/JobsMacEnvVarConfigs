@@ -10,6 +10,7 @@
 - [🔥 前言](#%E5%89%8D%E8%A8%80)
 - [一、实现与能力边界](#jobs-toc-heading-2)
 - [二、输入、结果与副作用](#jobs-toc-heading-3)
+  - [Flutter SDK获取与网络](#jobs-toc-heading-4)
 
 </details>
 <!-- jobs-toc:end -->
@@ -38,3 +39,7 @@
 函数定义被加载不代表业务已执行，但调用函数可能切换目录、重载环境、运行文件、重新激活全局 FVM、写项目 Java 版本或构建产物。需要影响当前终端的操作必须经 [entrypoints 函数包装](../entrypoints.command/README.md)调用；独立子进程不能更改父 Shell 状态。复制命令包时须连同它依赖的私有库保留相对布局。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
+
+### <span id="jobs-toc-heading-4" data-jobs-toc="v2">Flutter SDK获取与网络</span><!-- jobs-toc:heading-end -->
+
+Flutter SDK首次自举、FVM SDK安装和Flutter维护在获取前探测真实来源并选择当前任务路线，网络失败持续重试，Ctrl+C/终止信号取消。健康缓存可直接使用；run/pub/analyze/build等业务只执行一次。库被source时不下载、不更改父Shell代理或源。Brew Flutter cask通过`brew info --json=v2 --cask flutter`读取真实URL，仅比较连接路线，Brew原URL和SHA校验保留；更新入口继续沿用原双栈回退及结果统计。固定FVM版本缓存继续保留pin。部署时需携带完整`scripts/_lib`内三个SDK网络模块目录。
