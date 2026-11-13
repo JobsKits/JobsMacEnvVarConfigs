@@ -31,7 +31,7 @@
 
 ---
 
-> **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；脚本可单文件复制运行，不需要旁边的支持目录。普通终端模式选中该项后更新本体及公式索引，复用本轮已经成功的结果，不重复执行裸 `brew update`；索引失败则停止依赖它的升级。只在指定公式 `python@3.13` 缺失、损坏或版本不满足 `3.11+` 时经确认安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
+> **Python 环境预检**：实际调用 [**Python**](https://www.python.org/) 前使用本文件内嵌的环境预检函数，通过 [**Homebrew**](https://brew.sh/) 管理运行时；Python 预检不依赖外置环境库，完整更新入口还需携带文末说明的 `_lib/` SDK 网络资源。普通终端模式选中该项后更新本体及公式索引，复用本轮已经成功的结果，不重复执行裸 `brew update`；索引失败则停止依赖它的升级。只在指定公式 `python@3.13` 缺失、损坏或版本不满足 `3.11+` 时经确认安装或修复，健康运行时直接复用。缺失 Homebrew 时强提示选安装路径：精确大写 `YES` 选系统标准目录，其它输入或回车选用户目录；失败停止，不自动换路。必需安装或修复直接回车执行，任意非空输入（含空格）取消。预检不执行全局 `brew upgrade`。
 > 只有选中 Python 更新项后才执行内嵌预检；`-t` 明确授权自动维护该运行时，必要依赖缺失时自动准备并复检，不再逐次询问。不借用系统 Python 绕过检查；缺失 Homebrew 时报告未完成，由安装入口配置安装路径。
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
@@ -306,7 +306,7 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 
 - `github-store`：升级前执行 `brew tap OpenHub-Store/tap` 确认 tap；检测已安装后执行 `brew upgrade --cask github-store`；升级后执行 `xattr -dr com.apple.quarantine $APPLICATIONS_DIR/GitHub-Store.app`
 - [**Flutter**](https://flutter.dev/)：升级后先使用 `codesign` 校验 SDK 内 Dart 的官方签名，通过后才定向解除 Flutter SDK 的 `com.apple.quarantine` 标记；签名无效或签名方变更时保留隔离标记并输出警告。
-- `vlc`：如果 Homebrew 未登记 `vlc`，但本机已经存在 `/Applications/VLC.app`，更新入口会识别为本机已有 App 并跳过升级提示。
+- `vlc`：Homebrew 未登记、但本机已有 `/Applications/VLC.app` 时，只读核对官方 cask 元数据与 App 版本；对象、App 路径及简单稳定版本严格一致才记为已完成，不接管或覆盖 App。版本不等、独立构建号、多段版本、`latest` 或无效元数据仍明确跳过，不能仅凭 App 存在宣称已更新。
 
 少数特殊 `formula` 的更新后置动作已经适配：
 
@@ -335,7 +335,10 @@ install.command 增加 brew cask / formula 后，update.command 的同名数组�
 
 7、同轮的索引成功 / 失败按实际 Brew 可执行文件缓存；Python 与 CocoaPods 共用结果。索引失败时停止依赖该索引的公式或 cask 升级，保留日志，修复网络后重新运行。下载命令关闭自动 cleanup；仅本组升级全部完成后运行显式 cleanup，避免失败后清走重试所需内容。
 
-边界：[Homebrew 官方配置说明](https://docs.brew.sh/Manpage#environment)明确区分 curl 下载与 Git 传输。Git tap / `brew update` 内的 fetch 沿用已有 Git 网络及代理策略，额外传入当前子命令的低速保护与禁止凭据交互参数；curl 的 IPv4 / IPv6 切换不控制 Git 出口。`softwareupdate`、`npm`、`gem`、`pod`、`dart`、`flutter` 各有自己的下载器。完全不可达的 GitHub、GHCR 或 Flutter 存储服务仍会失败，脚本会如实记录，不能通过切换 IP 协议恢复不存在的网络链路。
+- `brew update` 明确报告锁占用时，检查当前 Brew 前缀下的实际系统锁，最多等待 `120` 秒；释放后在原线路额外补试一次。可通过 `JOBS_UPDATE_BREW_LOCK_TIMEOUT_SECONDS=1~600` 调整等待秒数。不会删除锁文件、终止原任务或把锁冲突当成网络换线；仍被占用时保留真实失败。
+- 随包 Jobs Git 入口存在、且用户未显式设置 `HOMEBREW_GIT_PATH` 时，传入该入口；`brew update` 另通过 `GIT_EXECUTABLE` 让内部 Shell fetch 确实复用既有选路。显式变量（包括空值）优先保留。代理仅传给当前 Git 子进程，脱敏审计沿用 Jobs Git 日志；不修改全局配置。Homebrew 可能优先采用自己的 Git，不能只凭 `HOMEBREW_GIT_PATH` 宣称所有下载均经代理。
+
+边界：[Homebrew 官方配置说明](https://docs.brew.sh/Manpage#environment)明确区分 curl 下载与 Git 传输。上述入口修复覆盖 `brew update` 的 Shell Git 拉取；其它 Git 下载仍由 Homebrew 的工具选择和既有配置决定。额外传入当前子命令的低速保护与禁止凭据交互参数；curl 的 IPv4 / IPv6 切换不控制 Git 出口。`softwareupdate`、`npm`、`gem`、`pod`、`dart`、`flutter` 各有自己的下载器。完全不可达的 GitHub、GHCR 或 Flutter 存储服务仍会失败，脚本会如实记录，不能通过切换 IP 协议恢复不存在的网络链路。
 
 ## <span id="jobs-toc-heading-9" data-jobs-toc="v2">五、更新顺序总览 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -382,29 +385,30 @@ codegraph index --force
 
 | 环节 | 实际执行 |
 | --- | --- |
-| 选已有网络链路 | 内嵌完整 `JobsCocoaPodsNetwork` 模块，用 CocoaPods 所用 Ruby 验证当前 Git 链路、显式代理及系统已启用代理 |
+| 选已有网络链路 | 内嵌完整 `JobsCocoaPodsNetwork` 模块及 update 专用交接策略，用 CocoaPods 所用 Ruby 验证显式设置、系统已启用代理及当前链路 |
 | 环境交接 | 仅把选中代理和新增 Git 配置写入权限 `0600` 的临时 NUL 键值载荷；Shell 校验完整受控键名后按字面值导出，不执行载荷代码，不输出 URL / 凭据 |
 | 后续 Specs 请求 | 同一个子 Shell 内的 GET、Git 协议检查及 `pod repo add-cdn` / `pod repo update` 全部继承本次选中配置；返回后父 Shell 环境不变，私有载荷删除 |
 
-1、先按项目中相同的选路顺序处理：显式 `JOBS_POD_PROXY_URL` 优先验证，否则复用当前环境与 Git 配置；原链路失败时读取 macOS 已启用的 HTTPS / HTTP / SOCKS 手工代理并发测试。使用 `AMPopTip 4.12.0` 的真实 Git tag 校验链路，不下载源码。每轮默认限时 `6` 秒，系统配置读取另限时 `1` 秒；不运行 PAC、不扫描端口、不猜代理、不安装软件。选路失败或 Ruby 不可用时，告警并保留原环境，继续独立判断 Specs 是否可达。
+1、保留显式 `JOBS_POD_PROXY_URL`、代理环境变量及目标 URL 的 Git 代理设置，包括显式空值。自动模式先读取 macOS 已开启的 HTTPS / HTTP / SOCKS 手工代理并发验证，把选中的代理真正传给本次 CDN、Git 与 pod 子进程；已有代理不可用时再验证原链路。不能仅因 PATH 中的 Git 包装器自行选路成功，就认定后续 CDN 已继承代理。update 专用策略验证真实 CocoaPods CDN podspec JSON 或 Specs Git 协议，任一可达即可将环境交给下一步双源实测，不因无关仓库失败而拒绝可用 CDN。单个 HTTP / Git 探测默认限时 `6` 秒，系统配置读取另限时 `1` 秒；不运行 PAC、不扫描端口、不猜代理、不安装软件。选路失败或 Ruby 不可用时，告警并保留原环境，继续独立判断 Specs 是否可达。此顺序只用于 update 的公共源维护，共用工程网络模块原文保持独立。
 
-2、同时从 `https://cdn.cocoapods.org/` 和 GitHub Raw 获取同一个 `AFNetworking 4.0.1` podspec，验证完整 JSON、名称和版本。GitHub 候选额外执行 `git ls-remote` 检查 Specs 仓库协议，每个候选默认整体限时 `8` 秒，包含 HTTP 和 Git 子进程。
+2、同时从 `https://cdn.cocoapods.org/` 和 GitHub Raw 获取同一个 `AFNetworking 4.0.1` podspec，验证完整 JSON、名称和版本。GitHub 候选额外执行 `git ls-remote` 检查 Specs 仓库协议，并访问真正刷新还会调用的 `https://api.github.com/repos/CocoaPods/Specs/commits/master`，使用 CocoaPods 的 SHA 响应协议严格校验提交号；仅 Raw 和 Git 可达不代表 GitHub API 可用。每个候选默认整体限时 `8` 秒，包含 HTTP、API 和 Git 子进程。该额外请求来自 [CocoaPods Core 的 GitHub 预检实现](https://raw.githubusercontent.com/CocoaPods/Core/1.17.0/lib/cocoapods-core/github.rb)。
 
 3、只选通过探测的源；两者可用时，GitHub GET 必须比 CDN 快超过 `15%` 且已有对应的本地 Git Specs，才优先选 Git，避免相近测量导致选源反复变化或引发首次大仓库克隆。Git 尚未登记、但 CDN 测通时，自动模式改用 CDN。小文件探测成功不保证完整大仓库或具体 Pod 下载成功。
 
 4、读取 `pod repo list --no-ansi` 获取 CocoaPods 实际配置的源名称，兼容自定义别名和仓库目录；只定向刷新所选官方公共源，保留私有源、原 Git Specs 和缓存。CDN 尚未登记时新增独立的 `jobs-public-cdn`，同名已占用则追加 `-cdn` 避让；不覆盖已有名称。Git 源尚未登记时提示未完成，不在全局升级中冷克隆巨大 Specs 仓库。
 
-5、双源不可用、明确指定的源未通过探测、源清单不可读或刷新失败时，该项返回失败，由总流程告警后继续。保留缓存不表示刷新成功。真实的源登记 / 刷新命令各自默认整体限时 `120` 秒，超时终止本次进程树，不自动删除缓存或切换未验证的源。
+5、双源不可用、明确指定的源未通过探测或源清单不可读时，该项返回失败，由总流程告警后继续。真实的源登记 / 刷新命令各自默认整体限时 `120` 秒，超时终止本次进程树；正常结束回收计时器时不会生成超时标记。仅自动选源模式下，初选源实际刷新超时或本次命令输出明确的连接／传输失败，且另一官方源已登记时，重新实测另一源，通过才额外刷新一次；包括 CocoaPods 的 GitHub API 连接错误返回 `1`，不只处理超时 `124`。分类只读取该次命令的私有临时输出，不扫描全局旧日志。显式 `cdn` / `git`、取消、认证、证书、权限、运行时异常、未知错误、无可用备用源或再次刷新失败均保留真实失败，不删除缓存、不冷克隆、不切换未验证的源。保留缓存不表示刷新成功。刷新使用 `--verbose` 同步显示真实请求进度；本次 pod 命令默认设置 `COCOAPODS_CDN_MAX_CONCURRENCY=8`，避免默认高并发挤占代理连接，已有显式值原样保留，不写入 Shell 配置。
 
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `JOBS_POD_NETWORK_ADAPT` | 开启 | `0` 关闭已有代理探测 / 继承，保留 Specs 实测 |
 | `JOBS_POD_PROXY_URL` | 未设置 | 可选已有 HTTP / HTTPS / SOCKS5 / SOCKS5H 代理，真实验证通过后仅用于本次子流程；不要将凭据写入仓库或共享日志 |
-| `JOBS_POD_NETWORK_PROBE_TIMEOUT` | `6` | Git 选路每轮秒数，范围 `1..30` |
+| `JOBS_POD_NETWORK_PROBE_TIMEOUT` | `6` | 选路中单个 HTTP / Git 探测秒数，范围 `1..30`；HTTP 不可用时才继续 Git 探测 |
 | `JOBS_SPECS_SOURCE` | `auto` | `auto` 实测选源；`cdn` / `git` 明确指定源，仍需该源通过探测 |
-| `JOBS_SPECS_PROBE_TIMEOUT` | `8` | 单个候选 HTTP + Git 整体秒数，范围 `1..30` |
+| `JOBS_SPECS_PROBE_TIMEOUT` | `8` | 单个候选 HTTP + API + Git 整体秒数，范围 `1..30` |
 | `JOBS_SPECS_CONNECT_TIMEOUT` | `2` | curl 连接秒数，范围 `1..30`，不超过候选整体时限 |
 | `JOBS_SPECS_UPDATE_TIMEOUT` | `120` | 单次源登记 / 刷新整体秒数，范围 `1..900` |
+| `COCOAPODS_CDN_MAX_CONCURRENCY` | 本入口未设置时使用 `8` | 仅本次 pod 命令的 CDN 并发数；显式值原样保留 |
 
 选源和失败摘要统一写入 `$TMPDIR/update.log`；临时响应、底层工具错误、超时标记和私有网络载荷随子流程结束清理，避免将可能包含凭据的原始诊断落入公共日志。代理只覆盖本次子流程；Git 临时配置追加到原 `GIT_CONFIG_COUNT`，限定 GitHub URL 范围，保留原私有域配置和 `NO_PROXY`。curl / CocoaPods 使用进程环境代理，不写全局 Git、系统代理或 shell profile，不关闭 TLS 校验；`curl -q` 不读取个人 `.curlrc`。模块完整内嵌在 `update.command` 的标记块中，不依赖外置支持目录。
 
@@ -577,8 +581,10 @@ flowchart TD
     L --> M[后续更新共用成功线路]
 ```
 
+**终端配色保护：** 独立运行时，在支持完整保存与恢复配色的交互终端中临时使用黑底白字及统一强调色；正常结束、失败或可捕获中断后恢复进入前的配色，不修改终端全局偏好或 Shell 启动配置。不支持完整保护、无交互终端、`NO_COLOR`、既有纯文本模式和 Sourcetree 场景不切换配色，并沿用纯文本输出约定。强制终止（如 `kill -9`）无法由脚本自身保证恢复，请使用运行时显示的独立恢复入口。
+
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>
 
 ### <span id="jobs-toc-heading-18" data-jobs-toc="v2">Flutter SDK获取与网络</span><!-- jobs-toc:heading-end -->
 
-Flutter SDK首次自举、FVM SDK安装和Flutter维护在获取前探测真实来源并选择当前任务路线，网络失败持续重试，Ctrl+C/终止信号取消。健康缓存可直接使用；run/pub/analyze/build等业务只执行一次。库被source时不下载、不更改父Shell代理或源。Brew Flutter cask通过`brew info --json=v2 --cask flutter`读取真实URL，仅比较连接路线，Brew原URL和SHA校验保留；更新入口继续沿用原双栈回退及结果统计。固定FVM版本缓存继续保留pin。部署时需携带完整`scripts/_lib`内三个SDK网络模块目录。
+Flutter SDK首次自举、FVM SDK安装和Flutter维护在获取前探测真实来源并选择当前任务路线，网络失败持续重试，Ctrl+C/终止信号取消。健康缓存可直接使用；run/pub/analyze/build等业务只执行一次。库被source时不下载、不更改父Shell代理或源。Brew Flutter cask通过`brew info --json=v2 --cask flutter`读取真实URL，仅比较连接路线，Brew原URL和SHA校验保留；更新入口继续沿用原双栈回退及结果统计。固定FVM版本缓存继续保留pin。部署时需携带`scripts/_lib`内的`【MacOS】FlutterSDK网络入口.zsh/`、`【MacOS】FlutterSDK命令适配.sh/`、`【MacOS】FlutterSDK网络选路.zsh/`和`【MacOS】SDK获取重试.zsh/`四个模块目录；每个目录包含同名脚本和配套说明，只复制`update.command`会缺少运行依赖。

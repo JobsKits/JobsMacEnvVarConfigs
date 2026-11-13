@@ -5,12 +5,339 @@
 # - 影响范围：仅创建专属临时目录；curl、git、pod、brew、gem 均使用假命令。
 # - 运行提示：自动执行回归，不联网、不安装、不升级；按 Ctrl+C 可取消。
 
+# >>> Jobs terminal style protection v1 >>>
+# 临时保护当前终端配色，业务进程自行管理原有退出清理。
+jobs_terminal_style_run() {
+    # 无法可靠保存原色时，沿用脚本已有的纯文本约定。
+    jobs_terminal_style_plain() {
+        PLAIN_OUTPUT=1
+        NO_COLOR=1
+        FORCE_COLOR=0
+        CLICOLOR=0
+        ANSI_COLORS_DISABLED=1
+        npm_config_color=false
+        export PLAIN_OUTPUT NO_COLOR FORCE_COLOR CLICOLOR ANSI_COLORS_DISABLED npm_config_color
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    }
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    fi
+    if [ -n "${TMUX:-}${STY:-}" ]; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_tty=$(tty 2>/dev/null) || jobs_terminal_style_plain "$@"
+    if ! ps -o pgid= -o tpgid= -p "$$" 2>/dev/null |
+         LC_ALL=C awk 'NF == 2 && $1 == $2 && $1 > 0 { foreground = 1 } END { exit !foreground }'; then
+        jobs_terminal_style_plain "$@"
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$jobs_style_tty" ] &&
+               kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null; then
+                if "$@"; then
+                    jobs_style_exit_status=0
+                else
+                    jobs_style_exit_status=$?
+                fi
+                exit "$jobs_style_exit_status"
+            fi
+            ;;
+    esac
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_terminal_style_plain "$@"
+    jobs_style_saved=''
+    jobs_style_saved_rows=''
+    jobs_style_applied_rows=''
+    jobs_style_changed=0
+    jobs_style_applied_complete=0
+    jobs_style_query_active=0
+    jobs_style_recovery=''
+    jobs_style_exit_status=0
+    jobs_style_esc=$(printf '\033')
+    jobs_style_bel=$(printf '\007')
+    # 只接受本次请求对应的 RGB 响应；非协议输入使本次探测失败。
+    jobs_terminal_style_query() {
+        jobs_style_query_key=$1
+        printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || return 1
+        jobs_style_reply=''
+        for jobs_style_attempt in 1 2 3; do
+            jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty)
+            jobs_style_reply=$jobs_style_reply$jobs_style_piece
+            case $jobs_style_reply in
+                *"$jobs_style_bel"|*"$jobs_style_esc\\") break ;;
+                '') ;;
+                "$jobs_style_esc"*) ;;
+                *) break ;;
+            esac
+        done
+        case $jobs_style_reply in
+            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_bel")
+                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
+                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_bel"}
+                ;;
+            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_esc\\")
+                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
+                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_esc\\"}
+                ;;
+            *) return 1 ;;
+        esac
+        jobs_style_normalized=$(printf '%s\n' "$jobs_style_rgb" | LC_ALL=C awk -F/ '
+            NF != 3 { exit 1 }
+            {
+                for (i = 1; i <= 3; i++) {
+                    h = tolower($i)
+                    if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) exit 1
+                    n = 0
+                    for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                    value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                }
+                printf "%d/%d/%d", value[1], value[2], value[3]
+            }
+        ') || return 1
+        [ -n "$jobs_style_normalized" ]
+    }
+    # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
+    jobs_terminal_style_accepts_target() {
+        jobs_style_requested_hex=''
+        case $1 in
+            10|12) jobs_style_requested_hex=ffffff ;;
+            11) jobs_style_requested_hex=000000 ;;
+            '4;'*)
+                jobs_style_requested_index=0
+                for jobs_style_requested_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+                    if [ "4;$jobs_style_requested_index" = "$1" ]; then
+                        jobs_style_requested_hex=$jobs_style_requested_color
+                        break
+                    fi
+                    jobs_style_requested_index=$((jobs_style_requested_index + 1))
+                done
+                ;;
+        esac
+        [ -n "$jobs_style_requested_hex" ] || return 1
+        printf '%s|%s\n' "$jobs_style_normalized" "$jobs_style_requested_hex" | LC_ALL=C awk -F'|' '
+            function hexbyte(h) {
+                return (index("0123456789abcdef", substr(h, 1, 1)) - 1) * 16 + index("0123456789abcdef", substr(h, 2, 1)) - 1
+            }
+            {
+                if (split($1, actual, "/") != 3 || length($2) != 6) exit 1
+                for (i = 1; i <= 3; i++) {
+                    difference = actual[i] - hexbyte(substr($2, i * 2 - 1, 2)) * 257
+                    if (difference < -255 || difference > 255) exit 1
+                }
+            }
+        '
+    }
+    # 检测到后续改色时只恢复仍由本次保护持有的项，保留独立恢复入口。
+    jobs_terminal_style_cleanup() {
+        jobs_style_result=$1
+        trap '' HUP INT TERM
+        if [ "$jobs_style_query_active" = 1 ]; then
+            stty "$jobs_style_stty" 2>/dev/null < /dev/tty || :
+            jobs_style_query_active=0
+        fi
+        if [ "$jobs_style_changed" = 1 ]; then
+            jobs_style_cleanup_ok=0
+            jobs_style_conflicts=''
+            jobs_style_restore_safe=''
+            if [ "$jobs_style_applied_complete" = 1 ]; then
+                jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
+                if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+                    jobs_style_query_active=1
+                    jobs_style_cleanup_ok=1
+                    while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
+                        [ -n "$jobs_style_key" ] || continue
+                        if ! jobs_terminal_style_query "$jobs_style_key"; then
+                            jobs_style_cleanup_ok=0
+                            break
+                        fi
+                        if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
+                            jobs_style_restore_safe=$jobs_style_restore_safe$jobs_style_original
+                        else
+                            jobs_style_conflicts="$jobs_style_conflicts $jobs_style_key"
+                        fi
+                    done <<JOBS_STYLE_APPLIED
+$jobs_style_applied_rows
+JOBS_STYLE_APPLIED
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || jobs_style_cleanup_ok=0
+                    jobs_style_query_active=0
+                fi
+            fi
+            if [ "$jobs_style_cleanup_ok" = 1 ] && printf '%s\033[0m' "$jobs_style_restore_safe" > /dev/tty; then
+                if [ -z "$jobs_style_conflicts" ]; then
+                    rm -f "$jobs_style_recovery"
+                    rmdir "${jobs_style_recovery%/*}" 2>/dev/null || :
+                else
+                    printf '检测到运行期间的配色变更，已保留这些项：%s\n' "$jobs_style_conflicts" >&2
+                    printf '确认要覆盖后续改色时才使用恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+                    [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+                fi
+            else
+                printf '终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_recovery" >&2
+                [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+            fi
+        fi
+        if [ "${2:-}" = continue ]; then
+            jobs_style_cleanup_status=$jobs_style_result
+            return 0
+        fi
+        exit "$jobs_style_result"
+    }
+    trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
+    trap 'jobs_style_exit_status=129; exit 129' HUP
+    trap 'jobs_style_exit_status=130; exit 130' INT
+    trap 'jobs_style_exit_status=143; exit 143' TERM
+    if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    for jobs_style_key in 10 11 12 '4;0' '4;1' '4;2' '4;3' '4;4' '4;5' '4;6' '4;7' '4;8' '4;9' '4;10' '4;11' '4;12' '4;13' '4;14' '4;15'; do
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_saved=$jobs_style_saved$jobs_style_reply
+        jobs_style_saved_rows="$jobs_style_saved_rows$jobs_style_key|$jobs_style_reply
+"
+    done
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_recovery_dir=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/jobs-terminal-style.XXXXXX") || jobs_terminal_style_plain "$@"
+    jobs_style_recovery=$jobs_style_recovery_dir/restore.sh
+    if ! (umask 077; {
+        printf '#!/bin/sh\n'
+        printf '[ -t 0 ] && [ "$(tty)" = '\''%s'\'' ] || { printf '\''请在原终端运行恢复入口。\\n'\'' >&2; exit 1; }\n' "$jobs_style_tty"
+        printf 'printf '\''本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：'\'' >&2\n'
+        printf 'IFS= read -r jobs_restore_choice\n[ "$jobs_restore_choice" = YES ] || exit 1\n'
+        printf 'printf '\''%%s\\033[0m'\'' '\''%s'\'' > /dev/tty\n' "$jobs_style_saved"
+    } > "$jobs_style_recovery"); then
+        printf '%s\n' '无法保存终端配色恢复入口；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '正在准备本次终端临时配色；强退后恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+    jobs_style_changed=1
+    printf '\033]10;#ffffff\007\033]11;#000000\007\033]12;#ffffff\007' > /dev/tty
+    jobs_style_index=0
+    for jobs_style_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+        printf '\033]4;%s;#%s\007' "$jobs_style_index" "$jobs_style_color" > /dev/tty
+        jobs_style_index=$((jobs_style_index + 1))
+    done
+    printf '\033[0m' > /dev/tty
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || { jobs_style_exit_status=1; exit 1; }
+    stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    jobs_style_targets_ok=1
+    while IFS='|' read -r jobs_style_key jobs_style_original; do
+        [ -n "$jobs_style_key" ] || continue
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_applied_rows="$jobs_style_applied_rows$jobs_style_key|$jobs_style_normalized|$jobs_style_original
+"
+        if ! jobs_terminal_style_accepts_target "$jobs_style_key"; then
+            jobs_style_targets_ok=0
+        fi
+    done <<JOBS_STYLE_ORIGINAL
+$jobs_style_saved_rows
+JOBS_STYLE_ORIGINAL
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '无法核实本次临时配色，已停止启动业务。' >&2
+        jobs_style_exit_status=1
+        exit 1
+    fi
+    jobs_style_applied_complete=1
+    if [ "$jobs_style_targets_ok" != 1 ]; then
+        jobs_terminal_style_cleanup 0 continue
+        jobs_style_changed=0
+        if [ "$jobs_style_cleanup_status" != 0 ]; then
+            jobs_style_exit_status=1
+            exit 1
+        fi
+        trap 'jobs_style_exit_status=129; exit 129' HUP
+        trap 'jobs_style_exit_status=130; exit 130' INT
+        trap 'jobs_style_exit_status=143; exit 143' TERM
+        printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '%s\n' '本次终端已临时使用黑底白字。' >&2
+    JOBS_TERMINAL_STYLE_TTY=$jobs_style_tty
+    JOBS_TERMINAL_STYLE_OWNER=$$
+    export JOBS_TERMINAL_STYLE_TTY JOBS_TERMINAL_STYLE_OWNER
+    if "$@"; then
+        jobs_style_exit_status=0
+    else
+        jobs_style_exit_status=$?
+    fi
+    exit "$jobs_style_exit_status"
+}
+# 仅监督直接执行的入口；被 source 时不切换配色、不重新执行业务。
+jobs_terminal_style_bootstrap() {
+    jobs_style_bootstrap_script=$1
+    shift
+    if [ -n "${ZSH_VERSION:-}" ]; then
+        case ${ZSH_EVAL_CONTEXT:-} in
+            *:file|*:file:*) return 0 ;;
+        esac
+    elif [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE:-$jobs_style_bootstrap_script}" != "$jobs_style_bootstrap_script" ]; then
+        return 0
+    fi
+    if [ "${JOBS_TERMINAL_STYLE_REEXEC:-}" = "$jobs_style_bootstrap_script" ]; then
+        unset JOBS_TERMINAL_STYLE_REEXEC
+        return 0
+    fi
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       [ -n "${TMUX:-}${STY:-}" ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        return 0
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null &&
+               [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$(tty 2>/dev/null)" ]; then
+                return 0
+            fi
+            ;;
+    esac
+    JOBS_TERMINAL_STYLE_REEXEC=$jobs_style_bootstrap_script
+    export JOBS_TERMINAL_STYLE_REEXEC
+    jobs_terminal_style_run /bin/zsh "$jobs_style_bootstrap_script" "$@"
+    jobs_style_bootstrap_result=$?
+    exit "$jobs_style_bootstrap_result"
+}
+jobs_terminal_style_bootstrap "$0" "$@"
+# <<< Jobs terminal style protection v1 <<<
+
 TEST_SCRIPT_DIR="${${(%):-%x}:A:h}"
 TEST_UPDATE_SCRIPT="${TEST_SCRIPT_DIR:h}/update.command"
 TEST_ROOT=''
 TEST_PASSED=0
 TEST_FAILED=0
 TEST_TOTAL=0
+TEST_ORIGINAL_RUN_CMD=''
 
 # 说明隔离边界，避免把模拟成功误认为真实网络验收。
 show_test_intro() {
@@ -46,11 +373,31 @@ while (( $# > 0 )); do
   shift
   case "$argument" in
     --output|-o) target="$1"; shift ;;
-    --connect-timeout|--max-time|--write-out) shift ;;
+    --connect-timeout|--max-time|--write-out|--header) shift ;;
     --head|-I) print -r -- 'HEAD request is forbidden' >&2; exit 97 ;;
     https://*) url="$argument" ;;
   esac
 done
+if [[ "$url" == https://api.github.com/repos/CocoaPods/Specs/commits/master ]]; then
+  print -r -- api >> "$MOCK_ROOT/api-probes"
+  case "${MOCK_API_MODE:-valid}" in
+    fail) exit 28 ;;
+    html) print -r -- '<html>portal</html>' > "$target" ;;
+    json) print -r -- '{"sha":"1234567890123456789012345678901234567890"}' > "$target" ;;
+    invalid-length) print -r -- 1234567890 > "$target" ;;
+    sha64) print -r -- 1234567890123456789012345678901234567890123456789012345678901234 > "$target" ;;
+    empty) : > "$target" ;;
+    hang)
+      print -r -- "$$" >> "$MOCK_ROOT/processes"
+      /bin/sleep 30 &
+      print -r -- "$!" >> "$MOCK_ROOT/processes"
+      wait
+      ;;
+    *) print -r -- 1234567890123456789012345678901234567890 > "$target" ;;
+  esac
+  print -rn -- "${MOCK_API_STATUS:-200}"
+  exit 0
+fi
 [[ "$url" == *'/Specs/a/7/5/AFNetworking/4.0.1/AFNetworking.podspec.json' ]] || exit 96
 candidate=cdn
 [[ "$url" == https://raw.githubusercontent.com/* ]] && candidate=git
@@ -72,6 +419,7 @@ if [[ "$candidate" == git ]]; then
   mode="${MOCK_GIT_MODE:-valid}"
   duration="${MOCK_GIT_TIME:-1.0}"
   delay="${MOCK_GIT_DELAY:-0}"
+  [[ -f "$MOCK_ROOT/refresh-started" && "${MOCK_FALLBACK_GIT_MODE:-}" == fail ]] && mode=fail
 fi
 if [[ "$mode" == hang ]]; then
   print -r -- "$$" >> "$MOCK_ROOT/processes"
@@ -112,12 +460,18 @@ MOCK_GIT
   /bin/cat > "$TEST_ROOT/bin/pod" <<'MOCK_POD'
 #!/bin/zsh
 print -r -- "pod|${(j: :)@}" >> "$MOCK_ROOT/calls"
+print -r -- "${(j: :)@}|${COCOAPODS_CDN_MAX_CONCURRENCY-unset}" >> "$MOCK_ROOT/concurrency"
 if [[ "$*" == 'repo list --no-ansi' ]]; then
   /bin/cat "$MOCK_ROOT/repos"
   exit "${MOCK_REPO_LIST_RESULT:-0}"
 fi
 [[ "$1" == repo && ( "$2" == update || "$2" == add-cdn ) ]] || exit 89
 [[ "${GIT_TERMINAL_PROMPT:-}" == 0 && "${GIT_ASKPASS:-}" == /usr/bin/false && "${GCM_INTERACTIVE:-}" == never ]] || exit 88
+[[ "$2" == update ]] && : > "$MOCK_ROOT/refresh-started"
+if [[ "$2" == update && ( "${MOCK_POD_ERROR_REPO:-}" == "$3" || "${MOCK_POD_ERROR_REPO:-}" == '*' ) ]]; then
+  print -r -- "${MOCK_POD_ERROR_TEXT:-}" >&2
+  exit "${MOCK_POD_ERROR_RESULT:-1}"
+fi
 if [[ "${MOCK_POD_HANG:-0}" == 1 ]]; then
   print -r -- "$$" >> "$MOCK_ROOT/processes"
   /bin/sleep 30 &
@@ -165,6 +519,7 @@ initialize_tests() {
   export TMPDIR="$TEST_ROOT/runtime"
   export JOBS_MAC_ENV_SOURCE_MODE=1
   source "$TEST_UPDATE_SCRIPT" || return 1
+  TEST_ORIGINAL_RUN_CMD="${functions[jobs_update_run_cmd]}"
   LOG_FILE="$TEST_ROOT/test.log"
 }
 # 固定包发现及运行包装器，禁止从宿主默认目录发现真实 Homebrew。
@@ -218,17 +573,27 @@ reset_fixture() {
   terminate_mock_processes
   export MOCK_CDN_MODE=valid MOCK_GIT_MODE=valid MOCK_CDN_TIME=1.0 MOCK_GIT_TIME=1.0
   export MOCK_CDN_DELAY=0 MOCK_GIT_DELAY=0 MOCK_PROBE_BARRIER=0 MOCK_GIT_PROTOCOL=valid
+  export MOCK_API_MODE=valid MOCK_API_STATUS=200
   export MOCK_POD_HANG=0 MOCK_POD_RESULT=0 MOCK_REPO_LIST_RESULT=0
+  export MOCK_POD_ERROR_REPO='' MOCK_POD_ERROR_TEXT='' MOCK_POD_ERROR_RESULT=1
+  export MOCK_FALLBACK_GIT_MODE=''
+  unset MOCK_FIRST_REFRESH_RESULT MOCK_SECOND_REFRESH_RESULT
   export MOCK_BREW_PRESENT=1 MOCK_BREW_INSTALLED_RESULT=0 MOCK_BREW_UPGRADE_RESULT=0 MOCK_BREW_INDEX_RESULT=0 MOCK_BREW_PREFIX="$TEST_ROOT"
   export MOCK_GEM_PRESENT=1 MOCK_GEM_INSTALLED_RESULT=0 MOCK_GEM_UPDATE_RESULT=0 MOCK_GEM_HOME="$TEST_ROOT/gems"
   export MOCK_POD_PRESENT=1 MOCK_SPECS_RESULT=0 JOBS_SPECS_SOURCE=auto
   export JOBS_SPECS_PROBE_TIMEOUT=8 JOBS_SPECS_CONNECT_TIMEOUT=2 JOBS_SPECS_UPDATE_TIMEOUT=8
+  unset COCOAPODS_CDN_MAX_CONCURRENCY
   JOBS_UPDATE_COCOAPODS_BREW_UPDATED=0
+  JOBS_UPDATE_FAILURE_COUNT=0 JOBS_UPDATE_SKIP_COUNT=0 JOBS_UPDATE_COMMAND_COUNT=0
+  JOBS_UPDATE_FAILED_STEPS=0 JOBS_UPDATE_PARTIAL_STEPS=0 JOBS_UPDATE_SKIPPED_STEPS=0 JOBS_UPDATE_SUCCEEDED_STEPS=0
+  JOBS_UPDATE_FAILED_DESCRIPTIONS=()
   : > "$TEST_ROOT/calls"
   : > "$TEST_ROOT/probes"
+  : > "$TEST_ROOT/api-probes"
   : > "$TEST_ROOT/processes"
   : > "$TEST_ROOT/test.log"
-  /bin/rm -f -- "$TEST_ROOT/cdn.started" "$TEST_ROOT/git.started"
+  : > "$TEST_ROOT/concurrency"
+  /bin/rm -f -- "$TEST_ROOT/cdn.started" "$TEST_ROOT/git.started" "$TEST_ROOT/refresh-started" "$TEST_ROOT/first-refresh" "$TEST_ROOT/timer-stop-exercised"
   print -r -- $'private-repo\n- Type: git\n- URL: https://example.invalid/private-specs.git\n\npublic-alias\n- Type: CDN\n- URL: https://cdn.cocoapods.org/\n' > "$TEST_ROOT/repos"
 }
 # 输出断言失败的实际值，便于定位被测分支。
@@ -253,7 +618,7 @@ assert_no_call() {
 }
 # 确认所有探测临时目录均已由被测代码回收。
 assert_no_probe_temp() {
-  local -a remaining=("$TMPDIR"/jobs-update-specs.*(N))
+  local -a remaining=("$TMPDIR"/jobs-update-specs.*(N) "$TMPDIR"/jobs-update-specs-outcome.*(N) "$TMPDIR"/jobs-update-specs-repo.*(N))
   assert_equal 0 "${#remaining}" '探测临时目录未回收'
 }
 # 检查超时夹具进程已结束；短暂僵尸态不视为存活工作进程。
@@ -296,6 +661,38 @@ test_forced_cdn_failure() { export JOBS_SPECS_SOURCE=cdn MOCK_CDN_MODE=fail; ass
 test_forced_git_failure() { export JOBS_SPECS_SOURCE=git MOCK_GIT_PROTOCOL=fail; assert_selection 1 ''; }
 # 显式指定的健康 Git 不受 CDN 耗时优势影响。
 test_forced_git() { export JOBS_SPECS_SOURCE=git MOCK_GIT_TIME=5.0; assert_selection 0 git; }
+# Raw 和 Git 协议健康仍不足以选择 Git；真正刷新所需 API 必须可用。
+test_git_api_unavailable_selects_cdn() {
+  export MOCK_GIT_TIME=0.1 MOCK_API_MODE=fail
+  assert_selection 0 cdn || return 1
+  assert_call 'git|-c credential.interactive=false ls-remote --exit-code https://github.com/CocoaPods/Specs.git HEAD' || return 1
+  assert_equal api "$(< "$TEST_ROOT/api-probes")"
+}
+# API 非200、门户、空响应或普通JSON均不得冒充版本SHA。
+test_git_api_invalid_payload() {
+  local mode
+  export MOCK_CDN_MODE=fail
+  for mode in html json invalid-length empty; do
+    export MOCK_API_MODE="$mode"
+    assert_selection 1 '' || return 1
+  done
+  export MOCK_API_MODE=valid MOCK_API_STATUS=302
+  assert_selection 1 ''
+}
+# GitHub API 的两种对象ID长度都必须以完整响应返回。
+test_git_api_sha_lengths() {
+  export JOBS_SPECS_SOURCE=git
+  assert_selection 0 git || return 1
+  export MOCK_API_MODE=sha64
+  assert_selection 0 git || return 1
+  /usr/bin/grep -Fq -- '--header Accept: application/vnd.github.v3.sha --header User-Agent: CocoaPods' "$TEST_ROOT/calls"
+}
+# API 挂起也属于同一Git候选墙钟时限，结束后回收传输进程。
+test_git_api_timeout() {
+  export JOBS_SPECS_PROBE_TIMEOUT=1 MOCK_API_MODE=hang MOCK_CDN_MODE=fail
+  assert_selection 1 '' || return 1
+  assert_no_live_mock_processes
+}
 # 门户 HTML 即使带 name/version 文本，也不得识别为有效样本。
 test_html_payload() { export MOCK_CDN_MODE=html MOCK_GIT_MODE=fail; assert_selection 1 ''; }
 # 非完整 JSON 即使包含正确字段，也不得识别为有效样本。
@@ -342,11 +739,47 @@ test_git_protocol_timeout() {
   assert_selection 1 '' || return 1
   assert_no_live_mock_processes
 }
+# 确定性放大“先杀sleep、后杀timer”窗口，不能靠主机调度恰好避开竞态。
+install_timer_stop_fixture() {
+  functions[jobs_test_original_terminate_tree]="${functions[jobs_update_specs_terminate_tree]}"
+  function jobs_update_specs_terminate_tree() {
+    local process_id="$1" sleep_child='' attempt
+    for attempt in {1..50}; do
+      sleep_child="$(/bin/ps -axo pid=,ppid=,comm= | /usr/bin/awk -v parent="$process_id" '$2 == parent && ($3 == "sleep" || $3 ~ /\/sleep$/) {print $1; exit}')"
+      [[ -n "$sleep_child" ]] && break
+      kill -0 "$process_id" 2>/dev/null || break
+      /bin/sleep 0.01
+    done
+    if [[ -n "$sleep_child" ]]; then
+      kill -TERM "$sleep_child" 2>/dev/null || true
+      : > "$MOCK_ROOT/timer-stop-exercised"
+      /bin/sleep 0.15
+    fi
+    jobs_test_original_terminate_tree "$process_id"
+  }
+}
+# 探测已完成后回收timer，不得因为它的sleep被终止而写出假超时。
+test_completed_probe_timer_stop_is_not_timeout() {
+  install_timer_stop_fixture
+  local specs_work_dir specs_probe_timeout=8 specs_connect_timeout=2
+  specs_work_dir="$(/usr/bin/mktemp -d "$TMPDIR/jobs-update-specs.XXXXXXXX")" || return 1
+  jobs_update_specs_run_candidate cdn || return 1
+  [[ -f "$TEST_ROOT/timer-stop-exercised" && -f "$specs_work_dir/cdn.result" && ! -f "$specs_work_dir/cdn.reason" ]] || return 1
+  /bin/rm -r -- "$specs_work_dir"
+  assert_no_probe_temp
+}
+# 刷新已完成后回收timer，也不得把正常返回改成124。
+test_completed_refresh_timer_stop_is_not_timeout() {
+  install_timer_stop_fixture
+  jobs_update_specs_run_cmd '正常刷新timer回收夹具' pod repo update public-alias --verbose || return 1
+  [[ -f "$TEST_ROOT/timer-stop-exercised" ]] || return 1
+  assert_no_probe_temp
+}
 # 刷新使用 CocoaPods 清单中的自定义 CDN 别名，私源保持不动。
 test_cdn_alias_refresh() {
   jobs_update_cocoapods_repos || return 1
   assert_call 'pod|repo list --no-ansi' || return 1
-  assert_call 'pod|repo update public-alias' || return 1
+  assert_call 'pod|repo update public-alias --verbose' || return 1
   assert_no_call 'pod|repo update private-repo' || return 1
   assert_no_call 'pod|repo remove' || return 1
   assert_no_probe_temp
@@ -356,7 +789,7 @@ test_git_alias_refresh() {
   export JOBS_SPECS_SOURCE=git
   print -r -- $'private-repo\n- Type: git\n- URL: https://example.invalid/private.git\n\ncustom Specs\n- Type: git\n- URL: https://GITHUB.COM/CocoaPods/Specs.git/\n' > "$TEST_ROOT/repos"
   jobs_update_cocoapods_repos || return 1
-  assert_call 'pod|repo update custom Specs' || return 1
+  assert_call 'pod|repo update custom Specs --verbose' || return 1
   assert_no_call 'pod|repo add'
 }
 # 没有官方 CDN 时独立登记 CDN，不删除或改写已有私源。
@@ -364,7 +797,7 @@ test_add_missing_cdn() {
   print -r -- $'private-repo\n- Type: git\n- URL: https://example.invalid/private.git\n' > "$TEST_ROOT/repos"
   jobs_update_cocoapods_repos || return 1
   assert_call 'pod|repo add-cdn jobs-public-cdn https://cdn.cocoapods.org/' || return 1
-  assert_call 'pod|repo update jobs-public-cdn' || return 1
+  assert_call 'pod|repo update jobs-public-cdn --verbose' || return 1
   assert_no_call 'pod|repo remove'
 }
 # 新 CDN 名被私源占用时继续避让，不能覆写同名仓库。
@@ -372,14 +805,14 @@ test_cdn_name_collision() {
   print -r -- $'jobs-public-cdn\n- Type: git\n- URL: https://example.invalid/private.git\n\njobs-public-cdn-cdn\n- Type: git\n- URL: https://example.invalid/private2.git\n' > "$TEST_ROOT/repos"
   jobs_update_cocoapods_repos || return 1
   assert_call 'pod|repo add-cdn jobs-public-cdn-cdn-cdn https://cdn.cocoapods.org/' || return 1
-  assert_call 'pod|repo update jobs-public-cdn-cdn-cdn'
+  assert_call 'pod|repo update jobs-public-cdn-cdn-cdn --verbose'
 }
 # 以选项开头的不安全旧别名不得进入 pod repo update 参数。
 test_unsafe_alias() {
   print -r -- $'--unsafe\n- Type: CDN\n- URL: https://cdn.cocoapods.org/\n' > "$TEST_ROOT/repos"
   jobs_update_cocoapods_repos || return 1
   assert_no_call 'pod|repo update --unsafe' || return 1
-  assert_call 'pod|repo update jobs-public-cdn'
+  assert_call 'pod|repo update jobs-public-cdn --verbose'
 }
 # 没有官方 Git 源时停止，不能为了更新冷克隆巨大 Specs 仓库。
 test_missing_git_cache() {
@@ -417,6 +850,22 @@ test_refresh_failure() {
   assert_equal 7 "$result" || return 1
   assert_no_probe_temp
 }
+# CDN 刷新默认限制并发，作用域仅限本次 pod 命令。
+test_cdn_refresh_concurrency_default() {
+  jobs_update_cocoapods_repos || return 1
+  /usr/bin/grep -Fxq -- 'repo update public-alias --verbose|8' "$TEST_ROOT/concurrency" || return 1
+  assert_equal 0 "${+COCOAPODS_CDN_MAX_CONCURRENCY}"
+}
+# 调用者显式指定的并发值不被默认值覆盖，包括空值。
+test_cdn_refresh_concurrency_explicit() {
+  local configured
+  for configured in 32 ''; do
+    export COCOAPODS_CDN_MAX_CONCURRENCY="$configured"
+    jobs_update_cocoapods_repos || return 1
+    /usr/bin/grep -Fxq -- "repo update public-alias --verbose|${configured}" "$TEST_ROOT/concurrency" || return 1
+    assert_equal "$configured" "$COCOAPODS_CDN_MAX_CONCURRENCY" || return 1
+  done
+}
 # 真实刷新阶段有独立墙钟时限，超时后杀掉 pod 及其后代。
 test_refresh_timeout() {
   export JOBS_SPECS_UPDATE_TIMEOUT=1 MOCK_POD_HANG=1
@@ -426,6 +875,200 @@ test_refresh_timeout() {
   assert_equal 124 "$result" || return 1
   (( elapsed < 6 )) || { print -r -- "刷新墙钟超时未生效：${elapsed}s" >&2; return 1; }
   assert_no_live_mock_processes || return 1
+  assert_no_probe_temp
+}
+# 只模拟首轮真实超时结果；继续执行原选源与第二轮刷新，避免把回退测试绑到短看门狗。
+prepare_timeout_fallback_fixture() {
+  print -r -- $'backup-specs\n- Type: git\n- URL: https://github.com/CocoaPods/Specs.git\n' >> "$TEST_ROOT/repos"
+  export JOBS_SPECS_UPDATE_TIMEOUT=8 MOCK_FIRST_REFRESH_RESULT=124
+  functions[jobs_test_original_specs_run_cmd]="${functions[jobs_update_specs_run_cmd]}"
+  function jobs_update_specs_run_cmd() {
+    if [[ ! -f "$MOCK_ROOT/first-refresh" || -n "${MOCK_SECOND_REFRESH_RESULT:-}" ]]; then
+      local simulated_result="${MOCK_FIRST_REFRESH_RESULT:-124}"
+      [[ ! -f "$MOCK_ROOT/first-refresh" ]] || simulated_result="$MOCK_SECOND_REFRESH_RESULT"
+      : > "$MOCK_ROOT/first-refresh"
+      : > "$MOCK_ROOT/refresh-started"
+      shift
+      local -a refresh_command=("$@")
+      shift refresh_command
+      print -r -- "pod|${(j: :)refresh_command}" >> "$MOCK_ROOT/calls"
+      return "$simulated_result"
+    fi
+    jobs_test_original_specs_run_cmd "$@"
+  }
+}
+# 小样本通过但 CDN 真正刷新超时后，只重测并刷新已有健康 Git 源一次。
+test_auto_timeout_fallback_recovers() {
+  prepare_timeout_fallback_fixture
+  jobs_update_cocoapods_repos || return 1
+  assert_call 'pod|repo update public-alias --verbose' || return 1
+  assert_call 'pod|repo update backup-specs --verbose' || return 1
+  assert_equal 2 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  assert_equal 4 "$(/usr/bin/wc -l < "$TEST_ROOT/probes" | /usr/bin/tr -d ' ')" || return 1
+  assert_no_call 'pod|repo add' || return 1
+  assert_no_call 'pod|repo remove' || return 1
+  assert_no_live_mock_processes || return 1
+  assert_no_probe_temp
+}
+# 原来选中 Git 超时，也只能回退已登记且重新测通的 CDN。
+test_auto_git_timeout_fallback_recovers() {
+  prepare_timeout_fallback_fixture
+  export MOCK_GIT_TIME=0.1
+  jobs_update_cocoapods_repos || return 1
+  assert_equal $'pod|repo update backup-specs --verbose\npod|repo update public-alias --verbose' \
+    "$(/usr/bin/grep '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  assert_no_call 'pod|repo add' || return 1
+  assert_no_live_mock_processes
+}
+# 显式选源即使真超时也不换协议，取消和本地错误不进入恢复分支。
+test_timeout_fallback_respects_explicit_and_cancel() {
+  prepare_timeout_fallback_fixture
+  local mode code result
+  for mode in cdn git; do
+    : > "$TEST_ROOT/calls"
+    /bin/rm -f -- "$TEST_ROOT/first-refresh"
+    export JOBS_SPECS_SOURCE="$mode"
+    result=0
+    jobs_update_cocoapods_repos || result=$?
+    assert_equal 124 "$result" || return 1
+    assert_equal 1 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  done
+  export JOBS_SPECS_SOURCE=auto
+  for code in 130 143 7; do
+    : > "$TEST_ROOT/calls"
+    /bin/rm -f -- "$TEST_ROOT/first-refresh"
+    export MOCK_FIRST_REFRESH_RESULT="$code"
+    result=0
+    jobs_update_cocoapods_repos || result=$?
+    assert_equal "$code" "$result" || return 1
+    assert_equal 1 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  done
+  assert_no_live_mock_processes
+}
+# 备用源在原刷新期间变坏时，重新实测必须挡住后续刷新。
+test_timeout_fallback_probe_rejects_unhealthy() {
+  prepare_timeout_fallback_fixture
+  export MOCK_FALLBACK_GIT_MODE=fail
+  local result=0
+  jobs_update_cocoapods_repos || result=$?
+  assert_equal 124 "$result" || return 1
+  assert_no_call 'pod|repo update backup-specs' || return 1
+  assert_equal 4 "$(/usr/bin/wc -l < "$TEST_ROOT/probes" | /usr/bin/tr -d ' ')" || return 1
+  assert_no_live_mock_processes
+}
+# 两个已登记源均真超时时止于两次刷新，最终仍报告超时。
+test_timeout_fallback_second_timeout_stays_failed() {
+  prepare_timeout_fallback_fixture
+  export MOCK_SECOND_REFRESH_RESULT=124
+  local result=0
+  jobs_update_cocoapods_repos || result=$?
+  assert_equal 124 "$result" || return 1
+  assert_equal 2 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  assert_no_live_mock_processes || return 1
+  assert_no_probe_temp
+}
+# 以真实命令退出与实际输出模拟用户日志，首轮Git样本仍然健康。
+prepare_network_fallback_fixture() {
+  print -r -- $'backup-specs\n- Type: git\n- URL: https://github.com/CocoaPods/Specs.git\n' >> "$TEST_ROOT/repos"
+  export MOCK_GIT_TIME=0.1 MOCK_POD_ERROR_REPO=backup-specs MOCK_POD_ERROR_RESULT=1
+  export MOCK_POD_ERROR_TEXT='[!] Failed to connect to GitHub to update the CocoaPods/Specs specs repo - Please check if you are offline, or that GitHub is down'
+}
+# 首轮API网络错误exit1后，自动实测已有CDN并完成刷新，不再仅处理124。
+test_git_api_failure_recovers_with_cdn() {
+  prepare_network_fallback_fixture
+  jobs_update_cocoapods_repos || return 1
+  assert_equal $'pod|repo update backup-specs --verbose\npod|repo update public-alias --verbose' \
+    "$(/usr/bin/grep '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  assert_no_call 'pod|repo add' || return 1
+  assert_no_call 'pod|repo remove' || return 1
+  assert_no_probe_temp
+}
+# 回退不是忽略错误；另一公共源也报网络失败时必须保留非零。
+test_both_refresh_network_failures() {
+  prepare_network_fallback_fixture
+  export MOCK_POD_ERROR_REPO='*'
+  local result=0
+  jobs_update_cocoapods_repos || result=$?
+  assert_equal 1 "$result" || return 1
+  assert_equal 2 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  assert_no_probe_temp
+}
+# 用户明确指定Git时，网络错误也不能静默改用CDN。
+test_explicit_source_network_failure() {
+  prepare_network_fallback_fixture
+  export JOBS_SPECS_SOURCE=git
+  local result=0
+  jobs_update_cocoapods_repos || result=$?
+  assert_equal 1 "$result" || return 1
+  assert_equal 1 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  assert_no_probe_temp
+}
+# 未知错误、权限/认证/证书/运行时和取消均须向上返回，不用换源掩盖。
+test_non_network_failures_never_fallback() {
+  prepare_network_fallback_fixture
+  local label code result
+  for label in unknown 'Permission denied' 'Authentication failed' 'HTTP 403 Forbidden' 'curl: (60) SSL certificate problem: certificate verify failed' 'RuntimeError: fixture crashed' 'LoadError: missing gem'; do
+    : > "$TEST_ROOT/calls"
+    export MOCK_POD_ERROR_TEXT="$label"
+    [[ "$label" == unknown ]] || MOCK_POD_ERROR_TEXT+=$'\n[!] Failed to connect to GitHub to update the CocoaPods/Specs specs repo'
+    result=0
+    jobs_update_cocoapods_repos || result=$?
+    assert_equal 1 "$result" || return 1
+    assert_equal 1 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  done
+  export MOCK_POD_ERROR_TEXT='[!] Failed to connect to GitHub to update the CocoaPods/Specs specs repo'
+  for code in 129 130 137 143; do
+    : > "$TEST_ROOT/calls"
+    export MOCK_POD_ERROR_RESULT="$code"
+    result=0
+    jobs_update_cocoapods_repos || result=$?
+    assert_equal "$code" "$result" || return 1
+    assert_equal 1 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  done
+  assert_no_probe_temp
+}
+# 备用CDN不再健康时，不执行第二次真正刷新。
+test_network_fallback_revalidates_alternative() {
+  prepare_network_fallback_fixture
+  export MOCK_CDN_MODE=fail
+  local result=0
+  jobs_update_cocoapods_repos || result=$?
+  assert_equal 1 "$result" || return 1
+  assert_equal 1 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  assert_no_probe_temp
+}
+# 记录器失败也不能因命令输出碰巧含网络词而认定可以安全恢复。
+test_capture_failure_is_not_network_recovery() {
+  prepare_network_fallback_fixture
+  function jobs_test_fail_capture() { /bin/cat > "$1"; return 7; }
+  functions[jobs_update_specs_run_cmd]="${functions[jobs_update_specs_run_cmd]/\/usr\/bin\/tee/jobs_test_fail_capture}"
+  local result=0
+  jobs_update_cocoapods_repos || result=$?
+  assert_equal 1 "$result" || return 1
+  assert_equal 1 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
+  assert_no_probe_temp
+}
+# 真实统一日志包装器只写一次，已恢复的错误不再污染外层失败统计。
+test_recovered_network_summary_and_single_log() {
+  prepare_network_fallback_fixture
+  functions[jobs_update_run_cmd]="$TEST_ORIGINAL_RUN_CMD"
+  JOBS_UPDATE_LOG_READY=1
+  jobs_update_run_step 'CocoaPods恢复夹具' jobs_update_cocoapods_repos || return 1
+  assert_equal 0 "$JOBS_UPDATE_FAILURE_COUNT" || return 1
+  assert_equal 0 "$JOBS_UPDATE_SKIP_COUNT" || return 1
+  assert_equal 1 "$JOBS_UPDATE_SUCCEEDED_STEPS" || return 1
+  assert_equal 1 "$(/usr/bin/grep -c '^\[!\] Failed to connect to GitHub' "$TEST_ROOT/test.log")" || return 1
+  assert_no_probe_temp
+}
+# 历史日志或旧分类不得触发当前未知错误的换源。
+test_stale_output_does_not_trigger_recovery() {
+  prepare_network_fallback_fixture
+  print -r -- "$MOCK_POD_ERROR_TEXT" > "$TEST_ROOT/test.log"
+  export MOCK_POD_ERROR_TEXT='unknown failure'
+  local result=0
+  jobs_update_cocoapods_repos || result=$?
+  assert_equal 1 "$result" || return 1
+  assert_equal 1 "$(/usr/bin/grep -c '^pod|repo update ' "$TEST_ROOT/calls")" || return 1
   assert_no_probe_temp
 }
 # 非法刷新预算不得启动真实刷新命令。
@@ -558,7 +1201,7 @@ test_unknown_owner() {
 test_cdn_when_git_cache_missing() {
   export MOCK_GIT_TIME=0.1
   jobs_update_cocoapods_repos || return 1
-  assert_call 'pod|repo update public-alias' || return 1
+  assert_call 'pod|repo update public-alias --verbose' || return 1
   assert_no_call 'pod|repo add'
 }
 # HTTPS 探测不保证 SSH，只有 SSH Git 源时不得用它通过刷新。
@@ -607,6 +1250,10 @@ run_network_cases() {
   run_case '强制 CDN 不静默换源' test_forced_cdn_failure
   run_case '强制 Git 不静默换源' test_forced_git_failure
   run_case '强制健康 Git' test_forced_git
+  run_case 'Git API不可达不选Git' test_git_api_unavailable_selects_cdn
+  run_case 'Git API非200或非SHA拒绝' test_git_api_invalid_payload
+  run_case 'Git API完整40/64SHA与请求头' test_git_api_sha_lengths
+  run_case 'Git API候选整体时限' test_git_api_timeout
   run_case '拒绝 HTML 字段假阳性' test_html_payload
   run_case '拒绝不完整 JSON' test_malformed_payload
   run_case '拒绝 JSON 内嵌字段文本' test_embedded_fields_payload
@@ -619,6 +1266,8 @@ run_network_cases() {
   run_case '连接时限收敛' test_connect_timeout_clamp
   run_case 'HTTP 墙钟超时与子进程回收' test_probe_timeout
   run_case 'Git 协议墙钟超时与子进程回收' test_git_protocol_timeout
+  run_case '完成探测后停timer不得误写超时' test_completed_probe_timer_stop_is_not_timeout
+  run_case '完成刷新后停timer不得误返124' test_completed_refresh_timer_stop_is_not_timeout
   run_case '自定义 CDN 别名与私源保留' test_cdn_alias_refresh
   run_case '自定义 Git 别名与 URL 规范化' test_git_alias_refresh
   run_case '缺失 CDN 独立登记' test_add_missing_cdn
@@ -628,7 +1277,22 @@ run_network_cases() {
   run_case '离线不触发刷新' test_no_refresh_when_offline
   run_case '源清单失败不新增' test_repo_list_failure
   run_case '刷新失败传播' test_refresh_failure
+  run_case 'CDN 默认并发8且不改父环境' test_cdn_refresh_concurrency_default
+  run_case 'CDN 显式并发值及空值保护' test_cdn_refresh_concurrency_explicit
   run_case '刷新墙钟超时与子进程回收' test_refresh_timeout
+  run_case '自动CDN超时重测已有Git源后恢复' test_auto_timeout_fallback_recovers
+  run_case '自动Git超时重测已有CDN源后恢复' test_auto_git_timeout_fallback_recovers
+  run_case '显式选源、取消与本地错误不切源' test_timeout_fallback_respects_explicit_and_cancel
+  run_case '原刷新超时后拒绝不健康备用源' test_timeout_fallback_probe_rejects_unhealthy
+  run_case '备用源仍超时不冒充成功或重复刷新' test_timeout_fallback_second_timeout_stays_failed
+  run_case 'Git API网络exit1后真实命令回退CDN' test_git_api_failure_recovers_with_cdn
+  run_case '双源网络错误仍返回失败' test_both_refresh_network_failures
+  run_case '显式源网络错误不换源' test_explicit_source_network_failure
+  run_case '未知、权限、认证、证书、运行时及取消不换源' test_non_network_failures_never_fallback
+  run_case '备用源必须重新测通' test_network_fallback_revalidates_alternative
+  run_case '输出捕获失败不冒充网络恢复' test_capture_failure_is_not_network_recovery
+  run_case '恢复后外层汇总成功且日志只写一次' test_recovered_network_summary_and_single_log
+  run_case '历史日志不触发本次换源' test_stale_output_does_not_trigger_recovery
   run_case '刷新时限范围校验' test_invalid_refresh_timeout
   run_case '单独选择 CocoaPods 升级 Brew 安装' test_brew_managed
   run_case '跳过 formula 阶段已完成升级' test_brew_already_updated

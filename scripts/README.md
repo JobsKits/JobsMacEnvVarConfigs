@@ -51,7 +51,7 @@
 | [`flutter_project.command/`](./flutter_project.command/README.md) | 按项目路由 Flutter / Dart 的 source 函数模块；优先项目 FVM。 |
 | [`install_jdk17.command/`](./install_jdk17.command/README.md) | 检测 JDK 17，按 Temurin、Zulu、OpenJDK 候选安装并复检。 |
 | [`install.command/`](./install.command/README.md) | 通过分类多选菜单安装所选开发依赖；不同于上一层的环境配置同步入口。 |
-| [`update.command/`](./update.command/README.md) | 按项维护开发工具、语言运行时和依赖；支持逐项确认及无人值守模式。 |
+| [`update.command/`](./update.command/README.md) | 按项维护开发工具、语言运行时和依赖；支持逐项确认、无人值守、Homebrew 更新锁等待及 Flutter／CocoaPods 网络适配。 |
 | [`pods.command/`](./pods.command/README.md) | 选择本地 Pod / podspec，在独立检查环境运行 `pod lib lint`。 |
 | [`repair_gem_extensions.command/`](./repair_gem_extensions.command/README.md) | 默认检查缺失的 Ruby 原生扩展；显式修复时备份、重建、验证，失败恢复。 |
 | [`codemap.command/`](./codemap.command/README.md) | 为当前或一个 / 多个指定目录构建 CodeGraph 索引，支持拖入路径。 |

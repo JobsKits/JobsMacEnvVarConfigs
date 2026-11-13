@@ -5,6 +5,332 @@
 # - 影响范围：所选工具、用户 Shell 配置、SDK 和包缓存。
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，按 Ctrl+C 可取消。
 
+# >>> Jobs terminal style protection v1 >>>
+# 临时保护当前终端配色，业务进程自行管理原有退出清理。
+jobs_terminal_style_run() {
+    # 无法可靠保存原色时，沿用脚本已有的纯文本约定。
+    jobs_terminal_style_plain() {
+        PLAIN_OUTPUT=1
+        NO_COLOR=1
+        FORCE_COLOR=0
+        CLICOLOR=0
+        ANSI_COLORS_DISABLED=1
+        npm_config_color=false
+        export PLAIN_OUTPUT NO_COLOR FORCE_COLOR CLICOLOR ANSI_COLORS_DISABLED npm_config_color
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    }
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        if "$@"; then
+            jobs_style_exit_status=0
+        else
+            jobs_style_exit_status=$?
+        fi
+        exit "$jobs_style_exit_status"
+    fi
+    if [ -n "${TMUX:-}${STY:-}" ]; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_tty=$(tty 2>/dev/null) || jobs_terminal_style_plain "$@"
+    if ! ps -o pgid= -o tpgid= -p "$$" 2>/dev/null |
+         LC_ALL=C awk 'NF == 2 && $1 == $2 && $1 > 0 { foreground = 1 } END { exit !foreground }'; then
+        jobs_terminal_style_plain "$@"
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$jobs_style_tty" ] &&
+               kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null; then
+                if "$@"; then
+                    jobs_style_exit_status=0
+                else
+                    jobs_style_exit_status=$?
+                fi
+                exit "$jobs_style_exit_status"
+            fi
+            ;;
+    esac
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_terminal_style_plain "$@"
+    jobs_style_saved=''
+    jobs_style_saved_rows=''
+    jobs_style_applied_rows=''
+    jobs_style_changed=0
+    jobs_style_applied_complete=0
+    jobs_style_query_active=0
+    jobs_style_recovery=''
+    jobs_style_exit_status=0
+    jobs_style_esc=$(printf '\033')
+    jobs_style_bel=$(printf '\007')
+    # 只接受本次请求对应的 RGB 响应；非协议输入使本次探测失败。
+    jobs_terminal_style_query() {
+        jobs_style_query_key=$1
+        printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || return 1
+        jobs_style_reply=''
+        for jobs_style_attempt in 1 2 3; do
+            jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty)
+            jobs_style_reply=$jobs_style_reply$jobs_style_piece
+            case $jobs_style_reply in
+                *"$jobs_style_bel"|*"$jobs_style_esc\\") break ;;
+                '') ;;
+                "$jobs_style_esc"*) ;;
+                *) break ;;
+            esac
+        done
+        case $jobs_style_reply in
+            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_bel")
+                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
+                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_bel"}
+                ;;
+            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_esc\\")
+                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
+                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_esc\\"}
+                ;;
+            *) return 1 ;;
+        esac
+        jobs_style_normalized=$(printf '%s\n' "$jobs_style_rgb" | LC_ALL=C awk -F/ '
+            NF != 3 { exit 1 }
+            {
+                for (i = 1; i <= 3; i++) {
+                    h = tolower($i)
+                    if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) exit 1
+                    n = 0
+                    for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                    value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                }
+                printf "%d/%d/%d", value[1], value[2], value[3]
+            }
+        ') || return 1
+        [ -n "$jobs_style_normalized" ]
+    }
+    # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
+    jobs_terminal_style_accepts_target() {
+        jobs_style_requested_hex=''
+        case $1 in
+            10|12) jobs_style_requested_hex=ffffff ;;
+            11) jobs_style_requested_hex=000000 ;;
+            '4;'*)
+                jobs_style_requested_index=0
+                for jobs_style_requested_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+                    if [ "4;$jobs_style_requested_index" = "$1" ]; then
+                        jobs_style_requested_hex=$jobs_style_requested_color
+                        break
+                    fi
+                    jobs_style_requested_index=$((jobs_style_requested_index + 1))
+                done
+                ;;
+        esac
+        [ -n "$jobs_style_requested_hex" ] || return 1
+        printf '%s|%s\n' "$jobs_style_normalized" "$jobs_style_requested_hex" | LC_ALL=C awk -F'|' '
+            function hexbyte(h) {
+                return (index("0123456789abcdef", substr(h, 1, 1)) - 1) * 16 + index("0123456789abcdef", substr(h, 2, 1)) - 1
+            }
+            {
+                if (split($1, actual, "/") != 3 || length($2) != 6) exit 1
+                for (i = 1; i <= 3; i++) {
+                    difference = actual[i] - hexbyte(substr($2, i * 2 - 1, 2)) * 257
+                    if (difference < -255 || difference > 255) exit 1
+                }
+            }
+        '
+    }
+    # 检测到后续改色时只恢复仍由本次保护持有的项，保留独立恢复入口。
+    jobs_terminal_style_cleanup() {
+        jobs_style_result=$1
+        trap '' HUP INT TERM
+        if [ "$jobs_style_query_active" = 1 ]; then
+            stty "$jobs_style_stty" 2>/dev/null < /dev/tty || :
+            jobs_style_query_active=0
+        fi
+        if [ "$jobs_style_changed" = 1 ]; then
+            jobs_style_cleanup_ok=0
+            jobs_style_conflicts=''
+            jobs_style_restore_safe=''
+            if [ "$jobs_style_applied_complete" = 1 ]; then
+                jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
+                if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+                    jobs_style_query_active=1
+                    jobs_style_cleanup_ok=1
+                    while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
+                        [ -n "$jobs_style_key" ] || continue
+                        if ! jobs_terminal_style_query "$jobs_style_key"; then
+                            jobs_style_cleanup_ok=0
+                            break
+                        fi
+                        if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
+                            jobs_style_restore_safe=$jobs_style_restore_safe$jobs_style_original
+                        else
+                            jobs_style_conflicts="$jobs_style_conflicts $jobs_style_key"
+                        fi
+                    done <<JOBS_STYLE_APPLIED
+$jobs_style_applied_rows
+JOBS_STYLE_APPLIED
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || jobs_style_cleanup_ok=0
+                    jobs_style_query_active=0
+                fi
+            fi
+            if [ "$jobs_style_cleanup_ok" = 1 ] && printf '%s\033[0m' "$jobs_style_restore_safe" > /dev/tty; then
+                if [ -z "$jobs_style_conflicts" ]; then
+                    rm -f "$jobs_style_recovery"
+                    rmdir "${jobs_style_recovery%/*}" 2>/dev/null || :
+                else
+                    printf '检测到运行期间的配色变更，已保留这些项：%s\n' "$jobs_style_conflicts" >&2
+                    printf '确认要覆盖后续改色时才使用恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+                    [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+                fi
+            else
+                printf '终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_recovery" >&2
+                [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
+            fi
+        fi
+        if [ "${2:-}" = continue ]; then
+            jobs_style_cleanup_status=$jobs_style_result
+            return 0
+        fi
+        exit "$jobs_style_result"
+    }
+    trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
+    trap 'jobs_style_exit_status=129; exit 129' HUP
+    trap 'jobs_style_exit_status=130; exit 130' INT
+    trap 'jobs_style_exit_status=143; exit 143' TERM
+    if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    for jobs_style_key in 10 11 12 '4;0' '4;1' '4;2' '4;3' '4;4' '4;5' '4;6' '4;7' '4;8' '4;9' '4;10' '4;11' '4;12' '4;13' '4;14' '4;15'; do
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_saved=$jobs_style_saved$jobs_style_reply
+        jobs_style_saved_rows="$jobs_style_saved_rows$jobs_style_key|$jobs_style_reply
+"
+    done
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '终端不支持完整配色保存，或启动时收到其它输入；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    jobs_style_recovery_dir=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/jobs-terminal-style.XXXXXX") || jobs_terminal_style_plain "$@"
+    jobs_style_recovery=$jobs_style_recovery_dir/restore.sh
+    if ! (umask 077; {
+        printf '#!/bin/sh\n'
+        printf '[ -t 0 ] && [ "$(tty)" = '\''%s'\'' ] || { printf '\''请在原终端运行恢复入口。\\n'\'' >&2; exit 1; }\n' "$jobs_style_tty"
+        printf 'printf '\''本操作会覆盖此终端当前配色。确认恢复脚本启动前的配色，请输入 YES：'\'' >&2\n'
+        printf 'IFS= read -r jobs_restore_choice\n[ "$jobs_restore_choice" = YES ] || exit 1\n'
+        printf 'printf '\''%%s\\033[0m'\'' '\''%s'\'' > /dev/tty\n' "$jobs_style_saved"
+    } > "$jobs_style_recovery"); then
+        printf '%s\n' '无法保存终端配色恢复入口；保留原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '正在准备本次终端临时配色；强退后恢复入口：sh "%s"\n' "$jobs_style_recovery" >&2
+    jobs_style_changed=1
+    printf '\033]10;#ffffff\007\033]11;#000000\007\033]12;#ffffff\007' > /dev/tty
+    jobs_style_index=0
+    for jobs_style_color in 000000 ff5f56 5fd787 ffd75f 5fafff d787ff 5fd7ff eeeeee 9e9e9e ff8787 87ffaf ffff87 87bfff ffafff afffff ffffff; do
+        printf '\033]4;%s;#%s\007' "$jobs_style_index" "$jobs_style_color" > /dev/tty
+        jobs_style_index=$((jobs_style_index + 1))
+    done
+    printf '\033[0m' > /dev/tty
+    jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || { jobs_style_exit_status=1; exit 1; }
+    stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=1
+    jobs_style_probe_ok=1
+    jobs_style_targets_ok=1
+    while IFS='|' read -r jobs_style_key jobs_style_original; do
+        [ -n "$jobs_style_key" ] || continue
+        if ! jobs_terminal_style_query "$jobs_style_key"; then
+            jobs_style_probe_ok=0
+            break
+        fi
+        jobs_style_applied_rows="$jobs_style_applied_rows$jobs_style_key|$jobs_style_normalized|$jobs_style_original
+"
+        if ! jobs_terminal_style_accepts_target "$jobs_style_key"; then
+            jobs_style_targets_ok=0
+        fi
+    done <<JOBS_STYLE_ORIGINAL
+$jobs_style_saved_rows
+JOBS_STYLE_ORIGINAL
+    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_exit_status=1; exit 1; }
+    jobs_style_query_active=0
+    if [ "$jobs_style_probe_ok" != 1 ]; then
+        printf '%s\n' '无法核实本次临时配色，已停止启动业务。' >&2
+        jobs_style_exit_status=1
+        exit 1
+    fi
+    jobs_style_applied_complete=1
+    if [ "$jobs_style_targets_ok" != 1 ]; then
+        jobs_terminal_style_cleanup 0 continue
+        jobs_style_changed=0
+        if [ "$jobs_style_cleanup_status" != 0 ]; then
+            jobs_style_exit_status=1
+            exit 1
+        fi
+        trap 'jobs_style_exit_status=129; exit 129' HUP
+        trap 'jobs_style_exit_status=130; exit 130' INT
+        trap 'jobs_style_exit_status=143; exit 143' TERM
+        printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
+        jobs_terminal_style_plain "$@"
+    fi
+    printf '%s\n' '本次终端已临时使用黑底白字。' >&2
+    JOBS_TERMINAL_STYLE_TTY=$jobs_style_tty
+    JOBS_TERMINAL_STYLE_OWNER=$$
+    export JOBS_TERMINAL_STYLE_TTY JOBS_TERMINAL_STYLE_OWNER
+    if "$@"; then
+        jobs_style_exit_status=0
+    else
+        jobs_style_exit_status=$?
+    fi
+    exit "$jobs_style_exit_status"
+}
+# 仅监督直接执行的入口；被 source 时不切换配色、不重新执行业务。
+jobs_terminal_style_bootstrap() {
+    jobs_style_bootstrap_script=$1
+    shift
+    if [ -n "${ZSH_VERSION:-}" ]; then
+        case ${ZSH_EVAL_CONTEXT:-} in
+            *:file|*:file:*) return 0 ;;
+        esac
+    elif [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE:-$jobs_style_bootstrap_script}" != "$jobs_style_bootstrap_script" ]; then
+        return 0
+    fi
+    if [ "${JOBS_TERMINAL_STYLE_REEXEC:-}" = "$jobs_style_bootstrap_script" ]; then
+        unset JOBS_TERMINAL_STYLE_REEXEC
+        return 0
+    fi
+    if [ ! -t 0 ] || [ ! -t 1 ] || [ -z "${TERM:-}" ] ||
+       [ "${TERM:-}" = dumb ] || [ "${NO_COLOR+x}" = x ] ||
+       [ "${PLAIN_OUTPUT:-0}" = 1 ] || [ "${IS_SOURCETREE_RUNTIME:-0}" = 1 ] ||
+       [ -n "${TMUX:-}${STY:-}" ] ||
+       env | LC_ALL=C grep -qiE '^(SOURCETREE|SOURCE_TREE)'; then
+        return 0
+    fi
+    case ${JOBS_TERMINAL_STYLE_OWNER:-} in
+        ''|*[!0-9]*) ;;
+        *)
+            if kill -0 "$JOBS_TERMINAL_STYLE_OWNER" 2>/dev/null &&
+               [ "${JOBS_TERMINAL_STYLE_TTY:-}" = "$(tty 2>/dev/null)" ]; then
+                return 0
+            fi
+            ;;
+    esac
+    JOBS_TERMINAL_STYLE_REEXEC=$jobs_style_bootstrap_script
+    export JOBS_TERMINAL_STYLE_REEXEC
+    jobs_terminal_style_run /bin/zsh "$jobs_style_bootstrap_script" "$@"
+    jobs_style_bootstrap_result=$?
+    exit "$jobs_style_bootstrap_result"
+}
+jobs_terminal_style_bootstrap "$0" "$@"
+# <<< Jobs terminal style protection v1 <<<
+
 
 # ============================================================
 # update.command - macOS 开发环境升级维护
@@ -23,6 +349,182 @@
 
 # >>> Jobs Homebrew install choice >>>
 # 输出安装诊断，避免混入返回的命令路径。
+# JOBS_INPUT_CHOICE_STYLE_BEGIN
+# 只展示提示选项；不读取答案、不改变默认值、返回码或业务环境。
+jobs_prompt_color_ready() {
+  [ -z "${NO_COLOR+x}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
+    [ "${PLAIN_OUTPUT:-0}" != 1 ] && [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]
+}
+# 原生 awk 分段着色；任意/非空输入优先，括号内外沿用同一个选项。
+jobs_prompt_format() {
+  /usr/bin/awk -v color="${1:-0}" -v lines="${2:-0}" -v keep="${3:-0}" '
+    function typedEnter(value, start, prefix) {
+      prefix = substr(value, 1, start - 1)
+      gsub(/[“”‘’「」『』"]/, "", prefix)
+      gsub(sprintf("%c", 39), "", prefix)
+      if (prefix ~ /(空格|[Ss][Pp][Aa][Cc][Ee])[[:space:]]*(后|再|并|[Tt][Hh][Ee][Nn])?[[:space:]]*$/) return 1
+      return prefix ~ /(输入|键入|填写|[Tt]ype)[^；;|]*[[:alnum:]_+-]+[[:space:]]*(后|再|并)?[[:space:]]*$/
+    }
+    function greenPosition(value, token, start) {
+      if (match(value, /(直接|仅|只需|只|按下|按)?[[:space:]]*(回车|回車)/)) {
+        start = RSTART
+        return typedEnter(value, start) ? 0 : start
+      }
+      if (!match(value, /(^|[^[:alnum:]_])([Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn])([^[:alnum:]_]|$)/)) return 0
+      start = RSTART
+      token = substr(value, RSTART, RLENGTH)
+      match(token, /[Ee][Nn][Tt][Ee][Rr]|[Rr][Ee][Tt][Uu][Rr][Nn]/)
+      start += RSTART - 1
+      return typedEnter(value, start) ? 0 : start
+    }
+    function segment(value, inherited, start, kind, prefix, body, red, green, connector, left, right, splitAt) {
+      if (value == "") return value
+      kind = inherited
+      start = 1
+      if (!kind) {
+        if (match(value, /(输入)?(任意|任何)(非空)?(字符|内容|输入|键)|非空(字符|内容|输入)?|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key/)) {
+          red = RSTART
+        }
+        green = greenPosition(value)
+        if (red && green && green < red) {
+          left = substr(value, 1, red - 1)
+          right = substr(value, red)
+          connector = ""
+          if (match(left, /(或者|或)[[:space:]]*$/)) {
+            connector = substr(left, RSTART)
+            left = substr(left, 1, RSTART - 1)
+          }
+          return segment(left, 0) connector segment(right, 31)
+        }
+        if (red && green && red < green && match(value, /或[[:space:]]*(直接|仅|只需|只|按下|按)?(回车|回車)/)) {
+          splitAt = RSTART
+          return segment(substr(value, 1, splitAt - 1), 31) "或" segment(substr(value, splitAt + length("或")), 0)
+        }
+        if (red) {
+          kind = 31
+          start = red
+        } else if (green) {
+          kind = 32
+          start = green
+        }
+      }
+      if (!kind || !color) return value
+      prefix = substr(value, 1, start - 1)
+      body = substr(value, start)
+      return prefix esc "[1;" kind "m" body esc "[0m"
+    }
+    function render(value, output, part, boundary, inherited, kind, consumed, depth, original) {
+      original = value
+      gsub(esc "\\[[0-9;]*m", "", value)
+      if (color && keep && !greenPosition(value) && value !~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) return original
+      output = ""
+      inherited = 0
+      depth = 0
+      while (match(value, /[；;\/|，,、？?：:=＝（）()\[\]【】]/)) {
+        part = substr(value, 1, RSTART - 1)
+        boundary = substr(value, RSTART, RLENGTH)
+        consumed = RSTART + RLENGTH
+        output = output segment(part, inherited) boundary
+        if (boundary ~ /[（(\[【]/) {
+          depth++
+          if (part ~ /(任意|任何|非空|其它输入|其他输入|[Tt]ype (anything|any[^ ]*)|[Pp]ress any key)/) inherited = 31
+          else if (greenPosition(part)) inherited = 32
+        } else if (boundary ~ /[）)\]】]/) {
+          if (depth) depth--
+        } else if (boundary ~ /[：:=＝]/) {
+          if (!inherited) {
+            if (part ~ /(任意|任何|非空|其它输入|其他输入)/) inherited = 31
+            else if (greenPosition(part)) inherited = 32
+          }
+        } else if (!depth) inherited = 0
+        value = substr(value, consumed)
+      }
+      return output segment(value, inherited)
+    }
+    BEGIN { esc = sprintf("%c", 27); first = 1 }
+    {
+      if (lines == 2) {
+        if (!first) printf "%s\n", render(pending)
+        pending = $0
+        first = 0
+        next
+      }
+      if (!lines && !first) printf "\n"
+      printf "%s", render($0)
+      if (lines) printf "\n"
+      first = 0
+    }
+    END {
+      if (lines == 2 && !first) {
+        sub(sprintf("%c", 1) "$", "", pending)
+        printf "%s", render(pending)
+      }
+    }
+  '
+}
+# read 的命令替换会使 stdout 成为管道，按输入与提示所在 stderr 判断终端。
+jobs_prompt_render() {
+  local jobs_prompt_color=0
+  if [ -t 0 ] && [ -t 2 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  printf "%s" "$1" | jobs_prompt_format "$jobs_prompt_color" 0
+}
+# 仅放在显示链末端；tee 在此函数之前接收纯文本，不把 ANSI 写入日志。
+jobs_prompt_stream() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  jobs_prompt_format "$jobs_prompt_color" 1 1
+}
+# 显示管道保留原末尾换行；只删除本轮追加的最后一个结束标记。
+jobs_prompt_filter() {
+  local jobs_prompt_color=0
+  if [ -t 1 ] && jobs_prompt_color_ready; then jobs_prompt_color=1; fi
+  { /bin/cat; printf '\001'; } | jobs_prompt_format "$jobs_prompt_color" 2 1
+}
+# 仅包装原 printf/echo/print 展示，原参数、尾换行与显示命令退出码保持不变。
+jobs_prompt_output() {
+  local jobs_prompt_status=0 jobs_prompt_stderr=0 jobs_prompt_arg="" jobs_prompt_previous=""
+  if [ "${1:-}" = print ]; then
+    for jobs_prompt_arg in "$@"; do
+      case "$jobs_prompt_arg" in -?*u2*|-u2) jobs_prompt_stderr=1 ;; esac
+      if [ "$jobs_prompt_previous" = -u ] && [ "$jobs_prompt_arg" = 2 ]; then jobs_prompt_stderr=1; fi
+      jobs_prompt_previous="$jobs_prompt_arg"
+      [ "$jobs_prompt_arg" != -- ] || break
+    done
+  fi
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    if [ "$jobs_prompt_stderr" = 1 ]; then
+      "$@" 2>&1 | jobs_prompt_filter >&2
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    else
+      "$@" | jobs_prompt_filter
+      jobs_prompt_status=$(( ${pipestatus[1]} != 0 ? ${pipestatus[1]} : ${pipestatus[2]} ))
+    fi
+  elif [ -n "${BASH_VERSION:-}" ]; then
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$(( ${PIPESTATUS[0]} != 0 ? ${PIPESTATUS[0]} : ${PIPESTATUS[1]} ))
+  else
+    "$@" | jobs_prompt_filter
+    jobs_prompt_status=$?
+  fi
+  return "$jobs_prompt_status"
+}
+# 仅替换日志 primitive 的 tee：磁盘同步追加纯文，终端保留非选项原色。
+jobs_prompt_tee() {
+  local jobs_prompt_log="$1" jobs_prompt_line="" jobs_prompt_newline=0
+  while :; do
+    jobs_prompt_line=""
+    if IFS= read -r jobs_prompt_line; then jobs_prompt_newline=1; else jobs_prompt_newline=0; [ -n "$jobs_prompt_line" ] || break; fi
+    if [ "$jobs_prompt_newline" = 1 ]; then
+      { printf '%s\n' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s\n' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    else
+      { printf '%s' "$jobs_prompt_line"; printf '\001'; } | jobs_prompt_format 0 2 >> "$jobs_prompt_log" || return $?
+      printf '%s' "$jobs_prompt_line" | jobs_prompt_filter || return $?
+    fi
+  done
+}
+# JOBS_INPUT_CHOICE_STYLE_END
+
 jobs_brew_note() {
   print -u2 -r -- "ℹ $*"
 }
@@ -65,7 +567,7 @@ jobs_brew_choose_installation() {
   print -u2 -r -- "⚠ Homebrew 尚未就绪，必须先选择安装路径："
   print -u2 -r -- "1、输入精确大写 YES：选择系统标准目录 $system_prefix（Apple Silicon：/opt/homebrew；Intel：/usr/local）。"
   print -u2 -r -- "   这表示你准备向系统目录安装；官方安装器可能随后要求管理员密码，并自行验证权限。"
-  print -u2 -r -- "2、其它输入或直接回车：选择用户目录 ${JOBS_HOMEBREW_INSTALL_PREFIX:-$HOME/.local/homebrew}，不使用 sudo；有管理员权限也可选此路径。"
+  jobs_prompt_output print -u2 -r -- "2、其它输入或直接回车：选择用户目录 ${JOBS_HOMEBREW_INSTALL_PREFIX:-$HOME/.local/homebrew}，不使用 sudo；有管理员权限也可选此路径。"
   print -u2 -r -- "本步骤只选择路径，不收集或验证密码；选定路径失败就停止，不自动切换。按 Ctrl+C 取消整个任务。"
   print -u2 -n -r -- "➤ 安装路径选择："
   if ! IFS= read -r answer; then
@@ -238,7 +740,7 @@ jobs_python_confirm_prepare() {
     _jobs_python_note "✖ 环境准备需要终端确认；当前未更新或安装任何环境。"
     return 1
   fi
-  print -u2 -n -r -- '➤ 按回车准备环境；任意非空输入（含空格）取消：'
+  jobs_prompt_output print -u2 -n -r -- '➤ 按回车准备环境；任意非空输入（含空格）取消：'
   if ! IFS= read -r answer || [[ -n "$answer" ]]; then
     _jobs_python_note '✖ 已取消环境准备。'
     return 1
@@ -257,7 +759,7 @@ _jobs_python_confirm_required() {
     _jobs_python_note "➤ 无人值守：$1"
     return 0
   fi
-  print -u2 -n -r -- "➤ $1；直接回车执行，任意非空输入（含空格）取消："
+  jobs_prompt_output print -u2 -n -r -- "➤ $1；直接回车执行，任意非空输入（含空格）取消："
   if ! IFS= read -r answer || [[ -n "$answer" ]]; then
     _jobs_python_note '✖ 已取消，停止当前流程。'
     return 1
@@ -811,7 +1313,7 @@ jobs_update_has() {
 }
 # 打印 update.command 的参数说明。
 jobs_update_show_usage() {
-  cat <<'EOFUSAGE'
+  cat <<'EOFUSAGE' | jobs_prompt_filter
 用法：
   update.command
   update.command -t
@@ -904,7 +1406,7 @@ jobs_update_prompt_run() {
     return 0
   fi
 
-  warm_echo "回车=跳过；输入任意字符后回车=执行升级 / 刷新"
+  jobs_prompt_output warm_echo "回车=跳过；输入任意字符后回车=执行升级 / 刷新"
 
   if [[ ! -t 0 ]]; then
     warn_echo "当前不是交互式终端，已跳过：${title}"
@@ -1344,6 +1846,44 @@ jobs_update_brew_failure_is_network_related() {
   fi
   grep -Eqi 'curl: \([0-9]+\)|Failed to download resource|Download failed|Could not resolve host|Failed to connect|Couldn.t connect|Connection timed out|Operation timed out|Operation too slow|SSL connect error|Recv failure|Send failure|HTTP/[0-9.]+ stream|unable to access|Fetching .+ failed|Could not read from remote repository|网络.*不可达|未执行 Git 网络命令' "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
 }
+# 只识别 update 的系统锁冲突，不能把权限或其它安装错误当作网络重试。
+jobs_update_brew_failure_is_update_locked() {
+  [[ -f "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE" ]] || return 1
+  grep -Eqi 'Another .*brew update.*process is already running|lockf:.*already locked' "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
+}
+# 等待现有 Homebrew update 释放系统锁；不删除锁文件，也不终止其它任务。
+jobs_update_wait_brew_update_lock() {
+  local argument='' brew_command='' action='' brew_prefix='' lock_file=''
+  local timeout="${JOBS_UPDATE_BREW_LOCK_TIMEOUT_SECONDS:-120}" elapsed=0
+  [[ "$timeout" == <-> ]] && (( timeout >= 1 && timeout <= 600 )) || timeout=120
+  for argument in "$@"; do
+    if [[ -n "$brew_command" ]]; then
+      action="$argument"
+      break
+    fi
+    [[ "${argument:t}" == brew ]] && brew_command="$argument"
+  done
+  [[ -n "$brew_command" && "$action" == update && -x /usr/bin/lockf ]] || return 1
+  brew_prefix="$(HOMEBREW_NO_AUTO_UPDATE=1 "$brew_command" --prefix 2>/dev/null)" || return 1
+  [[ "$brew_prefix" == /* && "$brew_prefix" != *$'\n'* ]] || return 1
+  lock_file="$brew_prefix/var/homebrew/locks/update"
+  warn_echo "检测到 Homebrew update 锁占用，最多等待 ${timeout} 秒；保留原任务和锁文件。"
+  while true; do
+    [[ ! -L "$lock_file" ]] || return 1
+    [[ -e "$lock_file" ]] || return 0
+    [[ -f "$lock_file" ]] || return 1
+    if /usr/bin/lockf -k -s -t 0 "$lock_file" /usr/bin/true; then
+      info_echo 'Homebrew update 系统锁已释放，重新执行本次命令。'
+      return 0
+    fi
+    if (( elapsed >= timeout )); then
+      warn_echo "Homebrew update 锁仍被占用，停止本次重试；未删除锁或终止原任务。"
+      return 1
+    fi
+    sleep 1
+    (( elapsed += 1 ))
+  done
+}
 # 使用指定 IP 协议执行一次 Homebrew 下载命令。
 jobs_update_run_brew_network_attempt() {
   local desc="$1"
@@ -1367,6 +1907,23 @@ jobs_update_run_brew_network_attempt() {
     HOMEBREW_CURL_SPEED_TIME="$JOBS_UPDATE_ACTIVE_LOW_SPEED_SECONDS"
     GIT_HTTP_LOW_SPEED_LIMIT=1 GIT_HTTP_LOW_SPEED_TIME=60
     GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never)
+  local git_wrapper="${SCRIPT_DIR:h}/_lib/jobs_git_network_strategy/bin/git"
+  local brew_argument='' brew_action='' found_brew=0
+  for brew_argument in "$@"; do
+    if (( found_brew == 1 )); then
+      brew_action="$brew_argument"
+      break
+    fi
+    [[ "${brew_argument:t}" == brew ]] && found_brew=1
+  done
+  if (( ! ${+HOMEBREW_GIT_PATH} )) && [[ -x "$git_wrapper" ]]; then
+    brew_env+=("HOMEBREW_GIT_PATH=$git_wrapper")
+    # update 的 Shell 入口可能优先选择系统 Git；显式复用其现有执行入口。
+    if [[ "$brew_action" == update ]] && (( ! ${+GIT_EXECUTABLE} )); then
+      brew_env+=("GIT_EXECUTABLE=$git_wrapper")
+      info_echo "Homebrew update Git 复用 Jobs 网络入口：$git_wrapper；代理仅影响本次 Git 及子进程，退出即撤回，审计沿用 Jobs Git 日志。"
+    fi
+  fi
 
   if [[ "$confirmation_mode" == "yes" ]]; then
     printf 'y\n' | "${brew_env[@]}" "$@" 2>&1 | jobs_update_log_stream "$JOBS_UPDATE_LAST_BREW_OUTPUT_FILE"
@@ -1396,6 +1953,20 @@ jobs_update_run_brew_network_attempt() {
   fi
   return $exit_code
 }
+# 锁冲突独立等待一次；网络换线不能解除其它进程持有的系统锁。
+jobs_update_run_brew_waiting_attempt() {
+  local desc="$1" confirmation_mode="$2" family="$3" guard_mode="$4" exit_code=0
+  shift 4
+  jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$family" "$guard_mode" "$@"
+  exit_code=$?
+  if (( exit_code != 0 )) && jobs_update_brew_failure_is_update_locked; then
+    if jobs_update_wait_brew_update_lock "$@"; then
+      jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$family" "$guard_mode" "$@"
+      return $?
+    fi
+  fi
+  return "$exit_code"
+}
 # 为所有 Homebrew 更新下载提供低速换线和有限重试。
 jobs_update_run_brew_adaptive_cmd() {
   local desc="$1"
@@ -1421,7 +1992,7 @@ jobs_update_run_brew_adaptive_cmd() {
   primary_family="$JOBS_UPDATE_PREFERRED_IP_FAMILY"
   secondary_family="$JOBS_UPDATE_SECONDARY_IP_FAMILY"
 
-  jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$primary_family" adaptive "$@"
+  jobs_update_run_brew_waiting_attempt "$desc" "$confirmation_mode" "$primary_family" adaptive "$@"
   exit_code=$?
   if (( exit_code == 0 )); then
     jobs_update_prefer_ip_family "$primary_family"
@@ -1433,7 +2004,7 @@ jobs_update_run_brew_adaptive_cmd() {
   fi
 
   warn_echo "Homebrew 下载或 Git 拉取失败；将 curl 切换到 ${secondary_family} 后重试，保留现有下载缓存。"
-  jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$secondary_family" adaptive "$@"
+  jobs_update_run_brew_waiting_attempt "$desc" "$confirmation_mode" "$secondary_family" adaptive "$@"
   exit_code=$?
   if (( exit_code == 0 )); then
     jobs_update_prefer_ip_family "$secondary_family"
@@ -1445,7 +2016,7 @@ jobs_update_run_brew_adaptive_cmd() {
   fi
 
   warn_echo "两轮均未完成；使用 curl ${primary_family} 做最后一次停滞时限更宽的尝试。不可达网络仍会失败，不表示 Git 线路已恢复。"
-  jobs_update_run_brew_network_attempt "$desc" "$confirmation_mode" "$primary_family" final "$@"
+  jobs_update_run_brew_waiting_attempt "$desc" "$confirmation_mode" "$primary_family" final "$@"
   exit_code=$?
   jobs_update_prefer_ip_family "$primary_family"
   if (( exit_code != 0 && JOBS_UPDATE_DEFER_BREW_FAILURE != 1 )); then
@@ -2001,7 +2572,7 @@ jobs_update_show_readme_and_wait() {
   clear 2>/dev/null || true
 
   {
-    cat <<'EOFREADME' | jobs_intro_style auto
+    cat <<'EOFREADME' | jobs_intro_style auto | jobs_prompt_filter
 ============================================================
 update.command - macOS 开发环境升级维护
 ============================================================
@@ -2046,7 +2617,7 @@ EOFREADME
       echo "  - ${pkg}" | jobs_intro_style body
     done
 
-    cat <<'EOFREADME' | jobs_intro_style auto
+    cat <<'EOFREADME' | jobs_intro_style auto | jobs_prompt_filter
 
 当前 BREW_FORMULAE：
 EOFREADME
@@ -2055,7 +2626,7 @@ EOFREADME
       echo "  - ${pkg}" | jobs_intro_style body
     done
 
-    cat <<'EOFREADME' | jobs_intro_style auto
+    cat <<'EOFREADME' | jobs_intro_style auto | jobs_prompt_filter
 
 日志路径：/tmp/update.log
 ============================================================
@@ -2065,7 +2636,7 @@ EOFREADME
   if [[ -t 0 && "${JOBS_MAC_ENV_SKIP_README:-}" != "1" ]]; then
     echo "" | jobs_intro_style body
     local _answer=""
-    IFS= read -r "_answer?👉 已阅读自述文件，按回车开始逐项更新；按 Ctrl+C 取消："
+    IFS= read -r "_answer?$(jobs_prompt_render "👉 已阅读自述文件，按回车开始逐项更新；按 Ctrl+C 取消：")"
   fi
 }
 # ---------- 更新项：系统 / Xcode / Shell ----------
@@ -2424,6 +2995,40 @@ brew_cask_local_app_exists() {
   app_path="$(brew_cask_local_app_path "$cask_name")"
   [[ -n "$app_path" && -d "$app_path" ]]
 }
+# 手动 App 只核验简单稳定版本；含独立构建号或不完整元数据时保留跳过。
+brew_cask_local_app_current_version() {
+  local cask_name="$1" app_path='' short_version='' build_version='' metadata='' ruby_bin=''
+  app_path="$(brew_cask_local_app_path "$cask_name")"
+  [[ -n "$app_path" && -d "$app_path" ]] || return 1
+  short_version="$(/usr/bin/plutil -extract CFBundleShortVersionString raw -o - "$app_path/Contents/Info.plist" 2>/dev/null)" || return 1
+  build_version="$(/usr/bin/plutil -extract CFBundleVersion raw -o - "$app_path/Contents/Info.plist" 2>/dev/null)" || build_version=''
+  metadata="$(HOMEBREW_NO_AUTO_UPDATE=1 brew info --cask --json=v2 "$cask_name" 2>/dev/null)" || return 1
+  ruby_bin="$(jobs_gemext_find_ruby 2>/dev/null)" || return 1
+  print -r -- "$metadata" | env -u RUBYOPT -u RUBYLIB -u RUBYGEMS_GEMDEPS -u BUNDLE_GEMFILE -u BUNDLE_BIN_PATH \
+    "$ruby_bin" --disable-gems -rjson -e '
+      begin
+        data = JSON.parse(STDIN.read)
+        casks = data.fetch("casks")
+        exit 1 unless casks.is_a?(Array) && casks.length == 1
+        cask = casks.first
+        token, short_version, build_version, app_name = ARGV
+        version = cask.fetch("version")
+        exit 1 unless cask["token"] == token && version.is_a?(String) && version.match?(/\A[0-9]+(?:\.[0-9]+)*\z/)
+        exit 1 unless short_version == version
+        exit 1 unless build_version.empty? || build_version == version
+        %w[bundle_version bundle_short_version].each do |key|
+          value = cask[key]
+          exit 1 unless value.nil? || value == version
+        end
+        exit 1 if cask["bundle_version"] && build_version.empty?
+        artifacts = cask.fetch("artifacts")
+        exit 1 unless artifacts.is_a?(Array) && artifacts.any? { |entry| entry.is_a?(Hash) && entry["app"] == [app_name] }
+        puts version
+      rescue JSON::ParserError, KeyError, TypeError, NoMethodError
+        exit 1
+      end
+    ' "$cask_name" "$short_version" "$build_version" "${app_path:t}"
+}
 # 封装 jobs_update_brew_formula_one 对应的独立处理逻辑。
 jobs_update_brew_formula_one() {
   local formula_name="$1"
@@ -2522,9 +3127,13 @@ jobs_update_brew_cask_one() {
 
   if ! brew list --cask --versions "$cask_name" >/dev/null 2>&1; then
     if brew_cask_local_app_exists "$cask_name"; then
-      local app_path=""
+      local app_path="" verified_version=""
       app_path="$(brew_cask_local_app_path "$cask_name")"
       success_echo "已检测到本机 App：${app_path}"
+      if verified_version="$(brew_cask_local_app_current_version "$cask_name")"; then
+        success_echo "${cask_name} 本机 App 版本 ${verified_version} 已与 Homebrew 当前稳定版本核对一致，本体无需升级；保留手动安装归属。"
+        return 0
+      fi
       jobs_update_record_skip "Homebrew 未登记 brew cask：${cask_name}，但本机已有 App，跳过升级。"
       return 0
     fi
@@ -3121,9 +3730,9 @@ jobs_update_specs_validate_payload() {
   payload_version="$(/usr/bin/plutil -extract version raw -o - -- "$payload" 2>/dev/null)" || return 1
   [[ "$payload_name" == AFNetworking && "$payload_version" == 4.0.1 ]]
 }
-# 对同一固定样本发送真实 GET；Git 候选额外验证 Specs 的 Git 协议。
+# 对同一样本发送 GET；Git 候选同时核验真正刷新所需的 Git 与 GitHub API。
 jobs_update_specs_probe() {
-  local candidate="$1" sample_url duration command_result=0
+  local candidate="$1" sample_url duration api_sha='' api_status='' command_result=0
   local sample_path='Specs/a/7/5/AFNetworking/4.0.1/AFNetworking.podspec.json'
   sample_url="https://cdn.cocoapods.org/${sample_path}"
   [[ "$candidate" == git ]] && sample_url="https://raw.githubusercontent.com/CocoaPods/Specs/master/${sample_path}"
@@ -3149,6 +3758,20 @@ jobs_update_specs_probe() {
       print -r -- "Git ls-remote 未通过，退出码：$command_result。" > "$specs_work_dir/git.reason"
       return 1
     fi
+    curl -q --silent --show-error --fail --location \
+      --connect-timeout "$specs_connect_timeout" --max-time "$specs_probe_timeout" \
+      --header 'Accept: application/vnd.github.v3.sha' --header 'User-Agent: CocoaPods' \
+      --output "$specs_work_dir/git.api" --write-out '%{http_code}' \
+      https://api.github.com/repos/CocoaPods/Specs/commits/master \
+      > "$specs_work_dir/git.api.status" 2> "$specs_work_dir/git.api.error" || command_result=$?
+    if (( command_result == 0 )); then
+      api_sha="$(< "$specs_work_dir/git.api")"
+      api_status="$(< "$specs_work_dir/git.api.status")"
+    fi
+    if (( command_result != 0 )) || [[ "$api_status" != 200 || ! "$api_sha" =~ '^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$' ]]; then
+      print -r -- "GitHub API 提交校验未通过，curl 退出码：$command_result。" > "$specs_work_dir/git.reason"
+      return 1
+    fi
   fi
   print -r -- "$duration" > "$specs_work_dir/$candidate.result"
 }
@@ -3159,7 +3782,7 @@ jobs_update_specs_run_candidate() (
   jobs_update_specs_probe "$candidate" &
   worker_pid=$!
   (
-    /bin/sleep "$specs_probe_timeout"
+    /bin/sleep "$specs_probe_timeout" || exit 0
     print -r -- '候选整体超时，已终止传输进程。' > "$specs_work_dir/$candidate.timeout"
     jobs_update_specs_terminate_tree "$worker_pid"
   ) &
@@ -3190,7 +3813,7 @@ jobs_update_specs_select_source() (
   specs_connect_timeout="$REPLY"
   (( specs_connect_timeout > specs_probe_timeout )) && specs_connect_timeout="$specs_probe_timeout"
   jobs_update_has curl || { jobs_update_specs_log '⚠ curl 不可用，保留 Specs 缓存。'; return 1; }
-  specs_work_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/jobs-update-specs.XXXXXXXX")" || return 1
+  specs_work_dir="$(/usr/bin/mktemp -d "${jobs_specs_repo_dir:-${TMPDIR:-/tmp}}/jobs-update-specs.XXXXXXXX")" || return 1
   trap jobs_update_specs_cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -3232,27 +3855,65 @@ jobs_update_specs_select_source() (
     jobs_update_specs_log '⚠ 本次没有通过探测的所选源；保留现有缓存，跳过 Specs 刷新。网络尚未恢复。'
     return 1
   fi
-  jobs_update_specs_log "✔ 本次只刷新 $selected 公共源；此探测不保证大仓库克隆或具体 Pod 源码下载成功。"
+  if [[ "$specs_mode" == auto ]]; then
+    jobs_update_specs_log "✔ 本次优先刷新 $selected 公共源；真实刷新出现网络错误时才重测并尝试已登记的另一公共源。此探测不保证完整刷新成功。"
+  else
+    jobs_update_specs_log "✔ 本次只刷新 $selected 公共源；此探测不保证大仓库克隆或具体 Pod 源码下载成功。"
+  fi
   print -r -- "$selected"
 )
-# 给真实源刷新设置独立总时限，禁止凭据交互，不改全局 Git 或代理配置。
+# 只将明确的传输失败列为可恢复，权限、证书、运行时及取消不得换源掩盖。
+jobs_update_specs_failure_is_network_related() {
+  local output_file="$1" exit_code="$2"
+  case "$exit_code" in 0|129|130|131|137|143) return 1 ;; 124) return 0 ;; esac
+  [[ -s "$output_file" ]] || return 1
+  if /usr/bin/grep -Eqi 'Permission denied|Authentication failed|Bad credentials|SSL certificate problem|SSL peer certificate|certificate.*(verify|trust|authenticat)|returned error: (401|403)|HTTP(/[0-9.]+)? (401|403)|Response:.*(401|403)|401 Unauthorized|403 Forbidden|Repository not found|Traceback \(most recent call last\)|(^|[[:space:](])(LoadError|SyntaxError|NameError|NoMethodError|ArgumentError|RuntimeError|TypeError|EncodingError)([):[:space:]]|$)' "$output_file"; then
+    return 1
+  fi
+  /usr/bin/grep -Eqi 'Failed to connect to GitHub to update the CocoaPods/Specs specs repo|curl: \((5|6|7|18|28|35|52|55|56|92)\)|Could not resolve host|Failed to connect|Couldn.t connect|Connection (timed out|reset)|Operation timed out|Timeout was reached|Operation too slow|Recv failure|Send failure|HTTP/[0-9.]+ stream|Error in the HTTP2 framing layer|CDN:.*(URL couldn.t be downloaded|download.*failed)|unable to access.*(timed out|Could not resolve|Failed to connect)' "$output_file"
+}
+# 只写当前 repo 流程创建的私有结果文件，内容仅含退出码与分类。
+jobs_update_specs_record_outcome() {
+  local outcome_file="${JOBS_UPDATE_SPECS_OUTCOME_FILE:-}"
+  [[ -n "$outcome_file" ]] || return 0
+  [[ -f "$outcome_file" && ! -L "$outcome_file" && -O "$outcome_file" && "${outcome_file:t}" == jobs-update-specs-outcome.* ]] || return 1
+  print -r -- "$1|$2" > "$outcome_file"
+}
+# 仅接受同一次命令的分类，避免上一轮或全局日志中的网络错误触发换源。
+jobs_update_specs_outcome_is_network_related() {
+  local exit_code="$1" outcome=''
+  case "$exit_code" in 129|130|131|137|143) return 1 ;; 124) return 0 ;; esac
+  [[ -r "${JOBS_UPDATE_SPECS_OUTCOME_FILE:-}" ]] || return 1
+  IFS= read -r outcome < "$JOBS_UPDATE_SPECS_OUTCOME_FILE" || return 1
+  [[ "$outcome" == "${exit_code}|network" ]]
+}
+# 给真实源刷新设置独立总时限，私有捕获只供本次分类，实时输出仍只记录一次。
 jobs_update_specs_run_cmd() (
   local desc="$1" REPLY specs_update_timeout specs_work_dir worker_pid timer_pid command_result=0
   local -a specs_pids=()
   shift
+  jobs_update_specs_record_outcome 1 other || return 1
   jobs_update_specs_timeout "${JOBS_SPECS_UPDATE_TIMEOUT:-120}" 900 || return 1
   specs_update_timeout="$REPLY"
-  specs_work_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/jobs-update-specs.XXXXXXXX")" || return 1
+  specs_work_dir="$(/usr/bin/mktemp -d "${jobs_specs_repo_dir:-${TMPDIR:-/tmp}}/jobs-update-specs.XXXXXXXX")" || return 1
+  local cdn_concurrency="${COCOAPODS_CDN_MAX_CONCURRENCY-8}"
   trap jobs_update_specs_cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  jobs_update_run_cmd "$desc（总时限 ${specs_update_timeout}s）" env \
-    GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never \
-    GIT_HTTP_LOW_SPEED_LIMIT=1024 GIT_HTTP_LOW_SPEED_TIME=30 "$@" &
+  (
+    jobs_update_run_cmd "$desc（总时限 ${specs_update_timeout}s）" env \
+      COCOAPODS_CDN_MAX_CONCURRENCY="$cdn_concurrency" \
+      GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false GCM_INTERACTIVE=never \
+      GIT_HTTP_LOW_SPEED_LIMIT=1024 GIT_HTTP_LOW_SPEED_TIME=30 "$@" 2>&1 | /usr/bin/tee "$specs_work_dir/command.output"
+    local -a command_stages=("${pipestatus[@]}")
+    print -r -- "${command_stages[1]}|${command_stages[2]}" > "$specs_work_dir/command.status"
+    (( command_stages[2] == 0 )) || return 1
+    return "${command_stages[1]}"
+  ) &
   worker_pid=$!
   specs_pids+=("$worker_pid")
   (
-    /bin/sleep "$specs_update_timeout"
+    /bin/sleep "$specs_update_timeout" || exit 0
     : > "$specs_work_dir/refresh.timeout"
     jobs_update_specs_terminate_tree "$worker_pid"
   ) &
@@ -3264,8 +3925,15 @@ jobs_update_specs_run_cmd() (
   specs_pids=()
   if [[ -f "$specs_work_dir/refresh.timeout" ]]; then
     warn_echo "Specs 刷新超过 ${specs_update_timeout}s，已停止本次进程；保留现有源与缓存，未完成刷新。"
+    jobs_update_specs_record_outcome 124 network || return 1
     return 124
   fi
+  local command_status='' failure_kind=other
+  [[ ! -r "$specs_work_dir/command.status" ]] || IFS= read -r command_status < "$specs_work_dir/command.status"
+  if [[ "$command_status" == "${command_result}|0" ]] && jobs_update_specs_failure_is_network_related "$specs_work_dir/command.output" "$command_result"; then
+    failure_kind=network
+  fi
+  jobs_update_specs_record_outcome "$command_result" "$failure_kind" || return 1
   return "$command_result"
 )
 # 在独立 Ruby 中复用工程网络模块，只输出状态及私有 NUL 环境载荷。
@@ -3520,10 +4188,101 @@ module JobsCocoaPodsNetwork
 end
 # <<< Jobs CocoaPods network module <<<
 
+# 只服务 update 的选路策略；避免 Git wrapper 的单次代理被误当成 pod 已继承的环境。
+require 'json'
+
+module JobsUpdatePodNetwork
+  CDN_SAMPLE_URL = 'https://cdn.cocoapods.org/Specs/a/7/5/AFNetworking/4.0.1/AFNetworking.podspec.json'.freeze
+  SPECS_URL = 'https://github.com/CocoaPods/Specs.git'.freeze
+
+  module_function
+
+  # 固定使用真实 Git 探测；测试可替换本方法，运行时不经 PATH 自动选路入口。
+  def git_executable
+    '/usr/bin/git'
+  end
+
+  # 显式 URL 代理（包括空值）优先；配置查询超时也不擅自覆盖未知配置。
+  def configured_git_proxy?(project_root, timeout)
+    _output, successful, timed_out = JobsCocoaPodsNetwork.run_bounded(
+      {}, [git_executable, 'config', '--get-urlmatch', 'http.proxy', SPECS_URL],
+      project_root, timeout
+    )
+    successful || timed_out
+  end
+
+  # 真正 CDN 的完整 JSON 或 Specs Git 任一路可用即可交接环境，最终源由后续实测决定。
+  def route_usable?(environment:, project_root:, timeout:)
+    payload, http_successful, = JobsCocoaPodsNetwork.run_bounded(
+      environment, ['curl', '-q', '--silent', '--show-error', '--fail', '--location',
+                    '--connect-timeout', [timeout, 2].min.to_s, '--max-time', timeout.to_s, CDN_SAMPLE_URL],
+      project_root, timeout
+    )
+    if http_successful
+      begin
+        spec = JSON.parse(payload)
+        return true if spec.is_a?(Hash) && spec['name'] == 'AFNetworking' && spec['version'] == '4.0.1'
+      rescue JSON::ParserError
+        nil
+      end
+    end
+    environment = environment.merge(
+      'GIT_TERMINAL_PROMPT' => '0', 'GCM_INTERACTIVE' => 'never',
+      'GIT_ASKPASS' => '/usr/bin/false', 'SSH_ASKPASS' => '/usr/bin/false'
+    )
+    output, successful, = JobsCocoaPodsNetwork.run_bounded(
+      environment, [git_executable, '-c', 'credential.interactive=false', 'ls-remote', '--quiet', '--exit-code', SPECS_URL, 'HEAD'],
+      project_root, timeout
+    )
+    successful && output.lines.any? do |line|
+      line.match?(/\A[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?\s+HEAD\s*\z/)
+    end
+  end
+
+  # Ruby 交接进程只写自己的环境；载荷写出后进程退出，无需依赖共用模块缓存。
+  def use_route(route)
+    return :inherited if route[:kind] == :inherited
+
+    route[:environment].each { |key, value| ENV[key] = value }
+    :proxy
+  end
+
+  # 已有明确代理不改写；自动模式先验证系统代理并将它真正交给后续 HTTP/Git。
+  def apply!(project_root:)
+    return :skipped if ENV['JOBS_POD_NETWORK_ADAPT'] == '0'
+
+    network = JobsCocoaPodsNetwork
+    timeout = network.probe_timeout
+    inherited = { kind: :inherited, environment: {} }
+    runner = method(:route_usable?)
+    if ENV.key?('JOBS_POD_PROXY_URL') && !ENV['JOBS_POD_PROXY_URL'].empty?
+      explicit = ENV['JOBS_POD_PROXY_URL']
+      route = network.proxy_route(:explicit, explicit) if network.valid_proxy_url?(explicit)
+      return use_route(route) if route && network.usable?(runner, route, project_root, timeout)
+
+      return :unavailable
+    end
+    protected_environment = ENV.key?('JOBS_POD_PROXY_URL') || network::PROXY_KEYS.any? { |key| ENV.key?(key) }
+    protected_environment ||= configured_git_proxy?(project_root, timeout)
+    unless protected_environment
+      results = network.system_proxy_routes(timeout).map do |route|
+        Thread.new { [route, network.usable?(runner, route, project_root, timeout)] }
+      end.map(&:value)
+      selected = results.find { |_route, usable| usable }
+      return use_route(selected.first) if selected
+    end
+    return use_route(inherited) if network.usable?(runner, inherited, project_root, timeout)
+
+    :unavailable
+  rescue StandardError
+    :unavailable
+  end
+end
+
 # >>> Jobs update Pod network handoff >>>
 begin
   original_environment = ENV.to_h
-  result = JobsCocoaPodsNetwork.apply!(project_root: ARGV.fetch(1), probe: true)
+  result = JobsUpdatePodNetwork.apply!(project_root: ARGV.fetch(1))
   raise 'unknown network result' unless %i[skipped inherited proxy unavailable].include?(result)
 
   changes = if result == :proxy
@@ -3585,21 +4344,37 @@ jobs_update_pod_network_prepare() {
         jobs_update_specs_log '⚠ 网络载荷校验失败，沿用原环境继续 Specs 实测；未认定代理可用。'
       fi
       ;;
-    inherited) jobs_update_specs_log 'ℹ 已验证并复用当前 Git 链路，继续 Specs 实测。' ;;
+    inherited) jobs_update_specs_log 'ℹ 已验证并复用当前 CocoaPods 链路，继续 Specs 实测；显式代理配置（含空值）保持原样。' ;;
     skipped) jobs_update_specs_log 'ℹ 已关闭 CocoaPods 代理适配，沿用当前环境进行 Specs 实测。' ;;
-    unavailable) jobs_update_specs_log '⚠ 当前 Git 链路和已配置代理未通过验证，沿用原环境继续 Specs 实测；网络尚未恢复。' ;;
+    unavailable) jobs_update_specs_log '⚠ 当前 CocoaPods 链路和已配置代理未通过验证，沿用原环境继续 Specs 实测；网络尚未恢复。' ;;
     *) jobs_update_specs_log '⚠ CocoaPods 网络适配未完成，沿用原环境继续 Specs 实测；未认定代理可用。' ;;
   esac
   jobs_update_pod_network_cleanup
   jobs_pod_route_payload=''
 }
+# 清理本次 repo 流程的私有交接载荷和退出状态，不触碰源与缓存。
+jobs_update_specs_repo_cleanup() {
+  jobs_update_pod_network_cleanup
+  local outcome_file="${JOBS_UPDATE_SPECS_OUTCOME_FILE:-}"
+  if [[ -n "$outcome_file" && ! -L "$outcome_file" && "${outcome_file:t}" == jobs-update-specs-outcome.* ]]; then
+    /bin/rm -f -- "$outcome_file"
+  fi
+  if [[ -d "${jobs_specs_repo_dir:-}" && ! -L "$jobs_specs_repo_dir" && "${jobs_specs_repo_dir:t}" == jobs-update-specs-repo.* ]]; then
+    /bin/rm -r -- "$jobs_specs_repo_dir"
+  fi
+}
 # 同一子 Shell 内准备代理、选择公共源并刷新；返回后父环境完全不变。
 jobs_update_cocoapods_repos() (
   local selected source_list source_name='' source_url='' row repo_name='' cdn_repo='' git_repo=''
+  local fallback='' fallback_repo='' verified_fallback=''
+  local JOBS_UPDATE_SPECS_OUTCOME_FILE=''
+  local jobs_specs_repo_dir=''
   local git_registered=0 result=0 jobs_pod_route_payload=''
-  trap jobs_update_pod_network_cleanup EXIT
+  trap jobs_update_specs_repo_cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
+  jobs_specs_repo_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/jobs-update-specs-repo.XXXXXXXX")" || return 1
+  JOBS_UPDATE_SPECS_OUTCOME_FILE="$(/usr/bin/mktemp "$jobs_specs_repo_dir/jobs-update-specs-outcome.XXXXXXXX")" || return 1
   jobs_update_pod_network_prepare
   source_list="$(pod repo list --no-ansi 2>/dev/null)" || { warn_echo '无法读取 CocoaPods 源清单，停止 Specs 刷新。'; return 1; }
   for row in "${(@f)source_list}"; do
@@ -3640,7 +4415,19 @@ jobs_update_cocoapods_repos() (
     done
     jobs_update_specs_run_cmd '登记官方 CDN（保留已有源）' pod repo add-cdn "$repo_name" https://cdn.cocoapods.org/ || return $?
   fi
-  jobs_update_specs_run_cmd "刷新 CocoaPods 公共源：$repo_name" pod repo update "$repo_name" || result=$?
+  jobs_update_specs_run_cmd "刷新 CocoaPods 公共源：$repo_name" pod repo update "$repo_name" --verbose || result=$?
+  if (( result != 0 )) && [[ "${JOBS_SPECS_SOURCE:-auto}" == auto ]] && jobs_update_specs_outcome_is_network_related "$result"; then
+    case "$selected" in
+      cdn) fallback=git; fallback_repo="$git_repo" ;;
+      git) fallback=cdn; fallback_repo="$cdn_repo" ;;
+    esac
+    [[ -n "$fallback_repo" ]] || return "$result"
+    warn_echo "所选公共源刷新发生网络错误（exit ${result}）；重新实测已登记的 ${fallback} 源，健康时额外刷新一次，保留原缓存。"
+    verified_fallback="$(JOBS_SPECS_SOURCE="$fallback" jobs_update_specs_select_source "$git_registered")" || return "$result"
+    [[ "$verified_fallback" == "$fallback" ]] || return "$result"
+    jobs_update_specs_run_cmd "刷新 CocoaPods 备用公共源：$fallback_repo" pod repo update "$fallback_repo" --verbose
+    return $?
+  fi
   return "$result"
 )
 # 按已安装的包管理器更新 CocoaPods，再独立按网络实测刷新公共规格源。
@@ -3981,7 +4768,7 @@ show_script_intro_and_wait() {
     JOBS_UPDATE_ENTRY_EXIT_CODE=1
     return 0
   fi
-  if ! read -r "?👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：" _; then
+  if ! read -r "?$(jobs_prompt_render "👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：")" _; then
     print -u2 -r -- '输入已取消或结束；未执行业务，原日志保持不变。'
     JOBS_UPDATE_ENTRY_EXIT_CODE=1
     return 0
