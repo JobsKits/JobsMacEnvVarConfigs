@@ -14,6 +14,46 @@
 # 仅渲染自述：标题红色加粗，编号正文蓝色常规字重；非彩色终端输出纯文本。
 # JOBS_INPUT_CHOICE_STYLE_BEGIN
 # 只展示提示选项；不读取答案、不改变默认值、返回码或业务环境。
+
+
+# >>> Jobs list parent confirmation >>>
+# 只读确认键；返回码20仅交给实际启动本功能的list父菜单。
+jobs_list_confirm_start() {
+  emulate -L zsh
+  local jobs_list_key='' jobs_list_prefix='' jobs_list_direction=''
+  [[ -t 0 ]] || return 130
+  print -u2 -n -r -- '按回车继续；← 返回功能菜单；Esc / Ctrl+C 取消：'
+  while true; do
+    IFS= read -rsk1 jobs_list_key || return 130
+    case "$jobs_list_key" in
+      $'\r'|$'\n') print -u2; return 0 ;;
+      $'\e')
+        jobs_list_prefix=''
+        IFS= read -rsk1 -t 0.12 jobs_list_prefix || { print -u2; return 130; }
+        case "$jobs_list_prefix" in
+          '['|'O')
+            jobs_list_direction=''
+            IFS= read -rsk1 -t 0.12 jobs_list_direction || { print -u2; return 130; }
+            [[ "$jobs_list_direction" != D ]] || { print -u2; return 20; }
+            ;;
+          *) print -u2; return 130 ;;
+        esac
+        ;;
+      $'\003') print -u2; return 130 ;;
+    esac
+  done
+}
+# 独立启动保留原read参数；list来源的返回/取消立即结束子脚本而不执行业务。
+jobs_list_intro_read() {
+  if [[ "${JOBS_LIST_PARENT_MENU:-}" != list ]]; then
+    builtin read "$@"
+    return $?
+  fi
+  local jobs_list_confirm_status=0
+  jobs_list_confirm_start || jobs_list_confirm_status=$?
+  (( jobs_list_confirm_status == 0 )) || exit "$jobs_list_confirm_status"
+}
+# <<< Jobs list parent confirmation <<<
 jobs_prompt_color_ready() {
   [ -z "${NO_COLOR+x}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] &&
     [ "${PLAIN_OUTPUT:-0}" != 1 ] && [ "${IS_SOURCETREE_RUNTIME:-0}" != 1 ]
@@ -677,7 +717,7 @@ show_script_intro_and_wait() {
     print -u2 -r -- '当前没有可交互输入，请在终端中重新运行。'
     exit 1
   fi
-  read -r "?$(jobs_prompt_render "👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：")" _ || exit 1
+  jobs_list_intro_read -r "?$(jobs_prompt_render "👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：")" _ || exit 1
 }
 # 统一收口脚本入口，仅委托已经拆分完成的业务流程。
 main() {

@@ -68,46 +68,169 @@ jobs_terminal_style_run() {
     jobs_style_exit_status=0
     jobs_style_esc=$(printf '\033')
     jobs_style_bel=$(printf '\007')
-    # 只接受本次请求对应的 RGB 响应；非协议输入使本次探测失败。
+    # 完整颜色帧有界重发；仅退出恢复容忍帧外回车和明确方向键。
     jobs_terminal_style_query() {
         jobs_style_query_key=$1
-        printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || return 1
         jobs_style_reply=''
-        for jobs_style_attempt in 1 2 3; do
-            jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty)
-            jobs_style_reply=$jobs_style_reply$jobs_style_piece
-            case $jobs_style_reply in
-                *"$jobs_style_bel"|*"$jobs_style_esc\\") break ;;
-                '') ;;
-                "$jobs_style_esc"*) ;;
-                *) break ;;
-            esac
-        done
-        case $jobs_style_reply in
-            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_bel")
-                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
-                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_bel"}
-                ;;
-            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_esc\\")
-                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
-                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_esc\\"}
-                ;;
-            *) return 1 ;;
-        esac
-        jobs_style_normalized=$(printf '%s\n' "$jobs_style_rgb" | LC_ALL=C awk -F/ '
-            NF != 3 { exit 1 }
-            {
-                for (i = 1; i <= 3; i++) {
-                    h = tolower($i)
-                    if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) exit 1
-                    n = 0
-                    for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
-                    value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
-                }
-                printf "%d/%d/%d", value[1], value[2], value[3]
+        jobs_style_query_buffer=''
+        jobs_style_query_target_reply=''
+        jobs_style_query_target_normalized=''
+        jobs_style_query_target_rgb=''
+        jobs_style_query_st="${jobs_style_esc}\\"
+        jobs_style_query_stale_count=0
+        jobs_style_query_phase=${2:-strict}
+        jobs_style_query_cr=$(printf '\r')
+        jobs_style_query_lf=$(printf '\n.')
+        jobs_style_query_lf=${jobs_style_query_lf%.}
+        jobs_style_query_failure='未收到目标颜色的完整答复（最多 3 次查询，每次约 2 秒）'
+        for jobs_style_query_round in 1 2 3; do
+            printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || {
+                jobs_style_query_failure='无法向原终端发送配色查询'
+                return 1
             }
-        ') || return 1
-        [ -n "$jobs_style_normalized" ]
+            for jobs_style_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+                # 哨兵保留末尾换行，不能把只有回车的键盘输入误当成无答复。
+                jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty; printf '.')
+                jobs_style_piece=${jobs_style_piece%.}
+                jobs_style_query_buffer=$jobs_style_query_buffer$jobs_style_piece
+                while [ -n "$jobs_style_query_buffer" ]; do
+                    # 仅退出恢复阶段允许帧外的明确控制键，普通文字仍然失败。
+                    if [ "$jobs_style_query_phase" = cleanup ]; then
+                        jobs_style_query_control_sequence=''
+                        jobs_style_query_control_partial=0
+                        case $jobs_style_query_buffer in
+                            "$jobs_style_query_cr"*) jobs_style_query_control_sequence=$jobs_style_query_cr ;;
+                            "$jobs_style_query_lf"*) jobs_style_query_control_sequence=$jobs_style_query_lf ;;
+                        esac
+                        if [ -z "$jobs_style_query_control_sequence" ]; then
+                            for jobs_style_query_direction in A B C D; do
+                                for jobs_style_query_control_candidate in \
+                                    "${jobs_style_esc}[${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}O${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;2${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;3${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;4${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;5${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;6${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;7${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;8${jobs_style_query_direction}"; do
+                                    case $jobs_style_query_buffer in
+                                        "$jobs_style_query_control_candidate"*)
+                                            jobs_style_query_control_sequence=$jobs_style_query_control_candidate
+                                            break 2
+                                            ;;
+                                    esac
+                                    case $jobs_style_query_control_candidate in
+                                        "$jobs_style_query_buffer"*) jobs_style_query_control_partial=1 ;;
+                                    esac
+                                done
+                            done
+                        fi
+                        if [ -n "$jobs_style_query_control_sequence" ]; then
+                            jobs_style_cleanup_control_keys=$(( ${jobs_style_cleanup_control_keys:-0} + 1 ))
+                            if [ "$jobs_style_cleanup_control_keys" -gt 64 ]; then
+                                jobs_style_query_failure='退出恢复期间已识别控制键超过 64 个，已停止自动恢复'
+                                return 1
+                            fi
+                            jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_control_sequence"}
+                            continue
+                        fi
+                        if [ "$jobs_style_query_control_partial" = 1 ]; then
+                            break
+                        fi
+                    fi
+                    case $jobs_style_query_buffer in
+                        "$jobs_style_esc"|"$jobs_style_esc]") break ;;
+                        "$jobs_style_esc]"*) ;;
+                        *) jobs_style_query_failure='收到非配色查询输入，已停止读取'; return 1 ;;
+                    esac
+                    jobs_style_query_head=''
+                    jobs_style_query_terminator=''
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_bel"*)
+                            jobs_style_query_head=${jobs_style_query_buffer%%"$jobs_style_bel"*}
+                            jobs_style_query_terminator=$jobs_style_bel
+                            ;;
+                    esac
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_query_st"*)
+                            jobs_style_query_st_head=${jobs_style_query_buffer%%"$jobs_style_query_st"*}
+                            if [ -z "$jobs_style_query_terminator" ] ||
+                               [ "${#jobs_style_query_st_head}" -lt "${#jobs_style_query_head}" ]; then
+                                jobs_style_query_head=$jobs_style_query_st_head
+                                jobs_style_query_terminator=$jobs_style_query_st
+                            fi
+                            ;;
+                    esac
+                    [ -n "$jobs_style_query_terminator" ] || break
+                    jobs_style_query_frame=$jobs_style_query_head$jobs_style_query_terminator
+                    jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_frame"}
+                    jobs_style_query_body=${jobs_style_query_head#"$jobs_style_esc]"}
+                    case $jobs_style_query_body in
+                        *';rgb:'*) ;;
+                        *) jobs_style_query_failure='配色答复格式或 RGB 数据无效'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_key=${jobs_style_query_body%%';rgb:'*}
+                    case $jobs_style_query_frame_key in
+                        10|11|12|'4;'[0-9]|'4;1'[0-5]) ;;
+                        *) jobs_style_query_failure='收到不属于本次颜色协议的答复'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_rgb=${jobs_style_query_body#"$jobs_style_query_frame_key;rgb:"}
+                    jobs_style_query_frame_normalized=$(printf '%s\n' "$jobs_style_query_frame_rgb" | LC_ALL=C awk -F/ '
+                        BEGIN { valid = 1 }
+                        NR != 1 || NF != 3 { valid = 0; exit }
+                        {
+                            for (i = 1; i <= 3; i++) {
+                                h = tolower($i)
+                                if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) {
+                                    valid = 0
+                                    exit
+                                }
+                                n = 0
+                                for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                                value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                            }
+                        }
+                        END {
+                            if (!valid || NR != 1) exit 1
+                            printf "%d/%d/%d", value[1], value[2], value[3]
+                        }
+                    ')
+                    if [ -z "$jobs_style_query_frame_normalized" ]; then
+                        jobs_style_query_failure='配色答复格式或 RGB 数据无效'
+                        return 1
+                    fi
+                    if [ "$jobs_style_query_frame_key" = "$jobs_style_query_key" ]; then
+                        if [ -n "$jobs_style_query_target_reply" ] &&
+                           [ "$jobs_style_query_target_normalized" != "$jobs_style_query_frame_normalized" ]; then
+                            jobs_style_query_failure='同一颜色的重复答复不一致，已停止自动恢复'
+                            return 1
+                        fi
+                        jobs_style_query_target_reply=$jobs_style_query_frame
+                        jobs_style_query_target_normalized=$jobs_style_query_frame_normalized
+                        jobs_style_query_target_rgb=$jobs_style_query_frame_rgb
+                    else
+                        jobs_style_query_stale_count=$((jobs_style_query_stale_count + 1))
+                        if [ "$jobs_style_query_stale_count" -gt 128 ]; then
+                            jobs_style_query_failure='收到过多旧颜色答复，已停止读取'
+                            return 1
+                        fi
+                    fi
+                done
+                if [ -n "$jobs_style_query_target_reply" ] && [ -z "$jobs_style_query_buffer" ]; then
+                    jobs_style_reply=$jobs_style_query_target_reply
+                    jobs_style_normalized=$jobs_style_query_target_normalized
+                    jobs_style_rgb=$jobs_style_query_target_rgb
+                    return 0
+                fi
+            done
+            # 残缺帧不能通过重发拼成另一个答复，更不能被当成键盘空输入。
+            if [ -n "$jobs_style_query_buffer" ]; then
+                jobs_style_query_failure='配色答复帧不完整，已停止自动恢复'
+                return 1
+            fi
+        done
+        return 1
     }
     # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
     jobs_terminal_style_accepts_target() {
@@ -150,8 +273,10 @@ jobs_terminal_style_run() {
         fi
         if [ "$jobs_style_changed" = 1 ]; then
             jobs_style_cleanup_ok=0
+            jobs_style_cleanup_issue='无法读取或设置原终端输入模式，或临时配色未完成核验'
             jobs_style_conflicts=''
             jobs_style_restore_safe=''
+            jobs_style_cleanup_control_keys=0
             if [ "$jobs_style_applied_complete" = 1 ]; then
                 jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
                 if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
@@ -159,8 +284,9 @@ jobs_terminal_style_run() {
                     jobs_style_cleanup_ok=1
                     while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
                         [ -n "$jobs_style_key" ] || continue
-                        if ! jobs_terminal_style_query "$jobs_style_key"; then
+                        if ! jobs_terminal_style_query "$jobs_style_key" cleanup; then
                             jobs_style_cleanup_ok=0
+                            jobs_style_cleanup_issue="颜色项 $jobs_style_key：$jobs_style_query_failure"
                             break
                         fi
                         if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
@@ -171,7 +297,7 @@ jobs_terminal_style_run() {
                     done <<JOBS_STYLE_APPLIED
 $jobs_style_applied_rows
 JOBS_STYLE_APPLIED
-                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || jobs_style_cleanup_ok=0
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_cleanup_ok=0; jobs_style_cleanup_issue='无法恢复原终端输入模式'; }
                     jobs_style_query_active=0
                 fi
             fi
@@ -185,7 +311,7 @@ JOBS_STYLE_APPLIED
                     [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
                 fi
             else
-                printf '终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_recovery" >&2
+                printf '终端配色未能安全自动恢复（%s）；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_cleanup_issue" "$jobs_style_recovery" >&2
                 [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
             fi
         fi
@@ -196,9 +322,9 @@ JOBS_STYLE_APPLIED
         exit "$jobs_style_result"
     }
     trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
-    trap 'jobs_style_exit_status=129; exit 129' HUP
-    trap 'jobs_style_exit_status=130; exit 130' INT
-    trap 'jobs_style_exit_status=143; exit 143' TERM
+    trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+    trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+    trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
     if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
         jobs_terminal_style_plain "$@"
     fi
@@ -274,9 +400,9 @@ JOBS_STYLE_ORIGINAL
             jobs_style_exit_status=1
             exit 1
         fi
-        trap 'jobs_style_exit_status=129; exit 129' HUP
-        trap 'jobs_style_exit_status=130; exit 130' INT
-        trap 'jobs_style_exit_status=143; exit 143' TERM
+        trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+        trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+        trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
         printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
         jobs_terminal_style_plain "$@"
     fi
@@ -330,6 +456,46 @@ jobs_terminal_style_bootstrap() {
 }
 jobs_terminal_style_bootstrap "$0" "$@"
 # <<< Jobs terminal style protection v1 <<<
+
+# >>> Jobs list parent confirmation >>>
+# 只读确认键；返回码20仅交给实际启动本功能的list父菜单。
+jobs_list_confirm_start() {
+  emulate -L zsh
+  local jobs_list_key='' jobs_list_prefix='' jobs_list_direction=''
+  [[ -t 0 ]] || return 130
+  print -u2 -n -r -- '按回车继续；← 返回功能菜单；Esc / Ctrl+C 取消：'
+  while true; do
+    IFS= read -rsk1 jobs_list_key || return 130
+    case "$jobs_list_key" in
+      $'\r'|$'\n') print -u2; return 0 ;;
+      $'\e')
+        jobs_list_prefix=''
+        IFS= read -rsk1 -t 0.12 jobs_list_prefix || { print -u2; return 130; }
+        case "$jobs_list_prefix" in
+          '['|'O')
+            jobs_list_direction=''
+            IFS= read -rsk1 -t 0.12 jobs_list_direction || { print -u2; return 130; }
+            [[ "$jobs_list_direction" != D ]] || { print -u2; return 20; }
+            ;;
+          *) print -u2; return 130 ;;
+        esac
+        ;;
+      $'\003') print -u2; return 130 ;;
+    esac
+  done
+}
+# 独立启动保留原read参数；list来源的返回/取消立即结束子脚本而不执行业务。
+jobs_list_intro_read() {
+  if [[ "${JOBS_LIST_PARENT_MENU:-}" != list ]]; then
+    builtin read "$@"
+    return $?
+  fi
+  local jobs_list_confirm_status=0
+  jobs_list_confirm_start || jobs_list_confirm_status=$?
+  (( jobs_list_confirm_status == 0 )) || exit "$jobs_list_confirm_status"
+}
+# <<< Jobs list parent confirmation <<<
+
 
 
 # ============================================================
@@ -1158,6 +1324,10 @@ JOBS_UPDATE_PARTIAL_STEPS=0
 JOBS_UPDATE_SKIPPED_STEPS=0
 JOBS_UPDATE_SUCCEEDED_STEPS=0
 typeset -a JOBS_UPDATE_FAILED_DESCRIPTIONS=()
+typeset -a JOBS_UPDATE_RETRY_TITLES=()
+typeset -a JOBS_UPDATE_RETRY_CALLBACKS=()
+JOBS_UPDATE_RETRY_SKIP_COUNT=0
+JOBS_UPDATE_RETRY_HEALTH_WARNING_COUNT=0
 typeset -a JOBS_UPDATE_COMMAND_OUTPUT_FILES=()
 readonly JOBS_UPDATE_NETWORK_PROBE_URL="https://formulae.brew.sh/api/formula.jws.json"
 readonly JOBS_UPDATE_NETWORK_PROBE_BYTES=1048576
@@ -1321,6 +1491,9 @@ jobs_update_show_usage() {
 参数：
   -t, --trust, --unattended  全量升级：跳过逐项确认；终端启动时集中获取一次管理员授权并在本轮保活，后续命令使用 sudo -n。后台须已有授权。
   -h, --help                显示本说明。
+
+收尾重试：有未完成组时，交互终端直接回车重试，输入任意字符后回车结束。
+          -t 同样保留该选择；无交互终端时报告未完成并非零退出。
 EOFUSAGE
 }
 # 解析 update.command 的运行参数。
@@ -1540,6 +1713,76 @@ jobs_update_run_step() {
   fi
 
   return 0
+}
+# 登记未完成的已选更新组；成功和纯跳过项不进入重试队列。
+jobs_update_run_selected_step() {
+  local title="$1" callback="$2"
+  local failed_before="$JOBS_UPDATE_FAILED_STEPS" partial_before="$JOBS_UPDATE_PARTIAL_STEPS"
+  local skips_before="$JOBS_UPDATE_SKIP_COUNT" health_before="$JOBS_UPDATE_HEALTH_WARNING_COUNT"
+  jobs_update_run_step "$title" "$callback"
+  if (( JOBS_UPDATE_FAILED_STEPS > failed_before || JOBS_UPDATE_PARTIAL_STEPS > partial_before )); then
+    JOBS_UPDATE_RETRY_TITLES+=("$title")
+    JOBS_UPDATE_RETRY_CALLBACKS+=("$callback")
+    (( JOBS_UPDATE_RETRY_SKIP_COUNT += JOBS_UPDATE_SKIP_COUNT - skips_before ))
+    (( JOBS_UPDATE_RETRY_HEALTH_WARNING_COUNT += JOBS_UPDATE_HEALTH_WARNING_COUNT - health_before ))
+  fi
+  return 0
+}
+# 只在交互终端询问重试；空行确认，EOF 和任意非空输入均结束。
+jobs_update_confirm_retry() {
+  if [[ ! -t 0 || ! -t 1 || "${IS_SOURCETREE_RUNTIME:-0}" == 1 ]]; then
+    info_echo '当前没有可交互终端，保留未完成结果；请在终端重新运行 update 后重试。'
+    return 1
+  fi
+  local answer=''
+  jobs_prompt_output warm_echo '是否继续完成上述未完成的升级？直接回车=重试；输入任意字符后回车=结束。'
+  if ! IFS= read -r answer; then
+    note_echo '输入已结束，保留当前升级结果。'
+    return 1
+  fi
+  if [[ -n "$answer" ]]; then
+    note_echo '已结束重试，保留当前升级结果。'
+    return 1
+  fi
+  return 0
+}
+# 每次确认只执行一轮未完成组，按最新结果汇总并保留历史日志。
+jobs_update_retry_unfinished() {
+  local ran_count="$1" retry_round=0 retry_index=0 brew_key=''
+  local -a retry_titles retry_callbacks
+  while (( ${#JOBS_UPDATE_RETRY_TITLES[@]} > 0 )); do
+    info_echo "待重试更新组：${#JOBS_UPDATE_RETRY_TITLES[@]} 项。组内将重新检查并执行所需维护。"
+    for (( retry_index = 1; retry_index <= ${#JOBS_UPDATE_RETRY_TITLES[@]}; retry_index++ )); do
+      note_echo "${JOBS_UPDATE_RETRY_TITLES[$retry_index]}"
+    done
+    jobs_update_confirm_retry || break
+
+    retry_titles=("${JOBS_UPDATE_RETRY_TITLES[@]}")
+    retry_callbacks=("${JOBS_UPDATE_RETRY_CALLBACKS[@]}")
+    JOBS_UPDATE_FAILURE_COUNT=0
+    JOBS_UPDATE_FAILED_STEPS=0
+    JOBS_UPDATE_PARTIAL_STEPS=0
+    JOBS_UPDATE_FAILED_DESCRIPTIONS=()
+    (( JOBS_UPDATE_SKIP_COUNT -= JOBS_UPDATE_RETRY_SKIP_COUNT ))
+    (( JOBS_UPDATE_HEALTH_WARNING_COUNT -= JOBS_UPDATE_RETRY_HEALTH_WARNING_COUNT ))
+    JOBS_UPDATE_RETRY_TITLES=()
+    JOBS_UPDATE_RETRY_CALLBACKS=()
+    JOBS_UPDATE_RETRY_SKIP_COUNT=0
+    JOBS_UPDATE_RETRY_HEALTH_WARNING_COUNT=0
+    for brew_key in "${(@k)JOBS_UPDATE_BREW_UPDATE_RESULTS}"; do
+      if (( JOBS_UPDATE_BREW_UPDATE_RESULTS[$brew_key] != 0 )); then
+        unset "JOBS_UPDATE_BREW_UPDATE_RESULTS[$brew_key]"
+      fi
+    done
+    jobs_update_cleanup_network_strategy
+    (( retry_round += 1 ))
+    highlight_echo "开始第 ${retry_round} 轮重试：${#retry_titles[@]} 个未完成更新组。"
+    for (( retry_index = 1; retry_index <= ${#retry_titles[@]}; retry_index++ )); do
+      jobs_update_run_selected_step "${retry_titles[$retry_index]}" "${retry_callbacks[$retry_index]}"
+    done
+    jobs_update_print_summary "$ran_count"
+  done
+  (( JOBS_UPDATE_FAILURE_COUNT == 0 && JOBS_UPDATE_SKIP_COUNT == 0 ))
 }
 # 封装 jobs_update_run_cmd 对应的独立处理逻辑。
 jobs_update_run_cmd() {
@@ -2604,6 +2847,8 @@ update.command - macOS 开发环境升级维护
   - 直接回车：跳过当前项
   - 输入任意字符后回车：执行当前升级 / 刷新项
   - 单项失败：记录警告，继续后续项
+  - 收尾重试：列出失败和部分执行组；直接回车重试，输入任意字符后回车结束
+  - 重试选择同样适用于终端中的 -t；无交互终端保留未完成结果并退出
   - 工具不存在：提示回到 install.command 补装，不在 update 中静默安装
   - Homebrew：brew update 遇到 formulae.brew.sh API 下载失败时，会自动使用 HOMEBREW_NO_INSTALL_FROM_API=1 降级重试
   - Homebrew 下载：全局测速选择 IPv4 / IPv6；正式下载持续低速时自动换线，无需人工选择
@@ -2636,7 +2881,7 @@ EOFREADME
   if [[ -t 0 && "${JOBS_MAC_ENV_SKIP_README:-}" != "1" ]]; then
     echo "" | jobs_intro_style body
     local _answer=""
-    IFS= read -r "_answer?$(jobs_prompt_render "👉 已阅读自述文件，按回车开始逐项更新；按 Ctrl+C 取消：")"
+    IFS= jobs_list_intro_read -r "_answer?$(jobs_prompt_render "👉 已阅读自述文件，按回车开始逐项更新；按 Ctrl+C 取消：")"
   fi
 }
 # ---------- 更新项：系统 / Xcode / Shell ----------
@@ -4579,99 +4824,109 @@ update() {
   JOBS_UPDATE_SUCCEEDED_STEPS=0
   JOBS_UPDATE_FAILED_DESCRIPTIONS=()
   JOBS_UPDATE_BREW_UPDATE_RESULTS=()
+  JOBS_UPDATE_RETRY_TITLES=()
+  JOBS_UPDATE_RETRY_CALLBACKS=()
+  JOBS_UPDATE_RETRY_SKIP_COUNT=0
+  JOBS_UPDATE_RETRY_HEALTH_WARNING_COUNT=0
 
   if jobs_update_prompt_run "是否更新 Xcode Command Line Tools / macOS softwareupdate？" "对应 install.command：Xcode Command Line Tools。"; then
-    jobs_update_run_step "Xcode Command Line Tools / softwareupdate 更新" jobs_update_clt
+    jobs_update_run_selected_step "Xcode Command Line Tools / softwareupdate 更新" jobs_update_clt
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 Xcode iOS 平台组件？" "对应 install.command：Xcode iOS 平台组件。"; then
-    jobs_update_run_step "Xcode iOS 平台组件更新" jobs_update_xcode_ios_platform
+    jobs_update_run_selected_step "Xcode iOS 平台组件更新" jobs_update_xcode_ios_platform
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 Oh My Zsh？" "对应 install.command：Oh My Zsh。"; then
-    jobs_update_run_step "Oh My Zsh 更新" jobs_update_oh_my_zsh
+    jobs_update_run_selected_step "Oh My Zsh 更新" jobs_update_oh_my_zsh
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 Homebrew？" "执行 brew update / upgrade / cask upgrade / cleanup / doctor。"; then
-    jobs_update_run_step "Homebrew 更新" jobs_update_homebrew
+    jobs_update_run_selected_step "Homebrew 更新" jobs_update_homebrew
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否逐项升级 install.command 中的 brew cask？" "覆盖 BREW_CASKS 内所有 cask；github-store 会确认 OpenHub-Store/tap 并解除 quarantine 标记。"; then
-    jobs_update_run_step "brew cask 批量升级" jobs_update_brew_casks
+    jobs_update_run_selected_step "brew cask 批量升级" jobs_update_brew_casks
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否逐项升级 install.command 中的 brew formula？" "覆盖 BREW_FORMULAE 内所有 formula。"; then
-    jobs_update_run_step "brew formula 批量升级" jobs_update_brew_formulae
+    jobs_update_run_selected_step "brew formula 批量升级" jobs_update_brew_formulae
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否检查 Rosetta 2？" "Rosetta 2 无独立升级命令，只检查状态并说明维护方式。"; then
-    jobs_update_run_step "Rosetta 2 状态检查" jobs_update_rosetta
+    jobs_update_run_selected_step "Rosetta 2 状态检查" jobs_update_rosetta
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 FVM / Flutter？" "覆盖 install.command 中的 brew cask：flutter 与 brew formula：fvm 的后续 SDK 维护。"; then
-    jobs_update_run_step "FVM / Flutter 更新" jobs_update_fvm_flutter
+    jobs_update_run_selected_step "FVM / Flutter 更新" jobs_update_fvm_flutter
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否维护 Node / corepack / npm？" "覆盖 install.command 中的 brew formula：node / pnpm，并兼容 nvm。"; then
-    jobs_update_run_step "Node / corepack / npm 维护" jobs_update_node_base
+    jobs_update_run_selected_step "Node / corepack / npm 维护" jobs_update_node_base
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 npm 全局包 quicktype？" "对应 install.command：npm 全局包 quicktype。"; then
-    jobs_update_run_step "npm quicktype 更新" jobs_update_npm_quicktype
+    jobs_update_run_selected_step "npm quicktype 更新" jobs_update_npm_quicktype
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 npm 全局包 OpenCLI？" "对应 install.command：npm 全局包 OpenCLI。"; then
-    jobs_update_run_step "npm OpenCLI 更新" jobs_update_npm_opencli
+    jobs_update_run_selected_step "npm OpenCLI 更新" jobs_update_npm_opencli
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 npm 全局包 CodeGraph？" "对应 install.command：npm 全局包 CodeGraph；执行 npm install -g @colbymchenry/codegraph@latest，并刷新 Agent 配置。"; then
-    jobs_update_run_step "npm CodeGraph 更新" jobs_update_npm_codegraph
+    jobs_update_run_selected_step "npm CodeGraph 更新" jobs_update_npm_codegraph
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 Ruby / RubyGems？" "维护 ruby / rbenv；前后检查 CocoaPods 所用 Ruby 的原生扩展，缺失时备份重建。"; then
-    jobs_update_run_step "Ruby / RubyGems 更新" jobs_update_ruby_base
+    jobs_update_run_selected_step "Ruby / RubyGems 更新" jobs_update_ruby_base
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 CocoaPods？" "识别 Homebrew / gem 安装；实测 CDN / GitHub 后仅刷新所选公共源，失败保留缓存。"; then
-    jobs_update_run_step "CocoaPods 更新" jobs_update_gem_cocoapods
+    jobs_update_run_selected_step "CocoaPods 更新" jobs_update_gem_cocoapods
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否更新 Python / pip？" "覆盖 install.command 中的 brew formula：python / python3 / uv 的后续维护。"; then
-    jobs_update_run_step "Python / pip 更新" jobs_update_python_base
+    jobs_update_run_selected_step "Python / pip 更新" jobs_update_python_base
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否修复 Dart pub 缓存？" "覆盖 Flutter / FVM / Dart 生态的缓存维护。"; then
-    jobs_update_run_step "Dart pub 缓存修复" jobs_update_pub_cache
+    jobs_update_run_selected_step "Dart pub 缓存修复" jobs_update_pub_cache
     (( ran_count++ ))
   fi
 
   if jobs_update_prompt_run "是否刷新 Git LFS 初始化与大文件参数？" "对应 install.command：Git LFS 初始化。"; then
-    jobs_update_run_step "Git LFS 初始化刷新" jobs_update_git_lfs_init
+    jobs_update_run_selected_step "Git LFS 初始化刷新" jobs_update_git_lfs_init
     (( ran_count++ ))
   fi
 
   if (( JOBS_UPDATE_TRUST_MODE != 1 )) && jobs_update_prompt_run "是否打开手动下载 / 更新页面？" "对应 install.command：VS Code、Android Studio、Python 手动下载页。"; then
-    jobs_update_run_step "手动下载 / 更新页面" jobs_update_manual_download_pages
+    jobs_update_run_selected_step "手动下载 / 更新页面" jobs_update_manual_download_pages
     (( ran_count++ ))
   elif (( JOBS_UPDATE_TRUST_MODE == 1 )); then
     info_echo '无人值守模式不计入手动网页项；打开下载页不代表升级完成。'
   fi
 
+  jobs_update_print_summary "$ran_count"
+  jobs_update_retry_unfinished "$ran_count"
+}
+# 输出当前最新结果；重试不增加原始选择数量，历史尝试保留在日志中。
+jobs_update_print_summary() {
+  local ran_count="$1"
   echo ""
   print_divider
   if (( ran_count == 0 )); then
@@ -4755,6 +5010,7 @@ show_script_intro_and_wait() {
   fi
   print -r -- '脚本名称：update.command' | jobs_intro_style title
   print -r -- '核心用途：按项维护 macOS 开发工具、语言运行时和已安装依赖。' | jobs_intro_style body
+  print -r -- '未完成项：汇总后可直接回车重试，输入任意字符后回车结束；无交互终端时保留结果并退出。' | jobs_intro_style body
   print -r -- '影响范围：所选工具、用户 Shell 配置、SDK 和包缓存。' | jobs_intro_style body
   print -r -- "日志位置：${LOG_FILE}（确认后开始记录）。" | jobs_intro_style body
   print -r -- '取消方式：按 Ctrl+C 终止；后续已完成的更新不会自动回滚。' | jobs_intro_style body
@@ -4768,7 +5024,7 @@ show_script_intro_and_wait() {
     JOBS_UPDATE_ENTRY_EXIT_CODE=1
     return 0
   fi
-  if ! read -r "?$(jobs_prompt_render "👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：")" _; then
+  if ! jobs_list_intro_read -r "?$(jobs_prompt_render "👉 已了解脚本用途与影响，按回车继续；按 Ctrl+C 取消：")" _; then
     print -u2 -r -- '输入已取消或结束；未执行业务，原日志保持不变。'
     JOBS_UPDATE_ENTRY_EXIT_CODE=1
     return 0

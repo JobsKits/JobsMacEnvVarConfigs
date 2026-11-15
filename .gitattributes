@@ -55,4 +55,16 @@
 "/Sys/README.md" filter=jobs-markdown-toc
 "/scripts/_lib/README.md" filter=jobs-markdown-toc
 "/zsh/README.md" filter=jobs-markdown-toc
+"/scripts/【MacOS】split.command/README.md" filter=jobs-markdown-toc
+"/scripts/【MacOS】merge.command/README.md" filter=jobs-markdown-toc
+"/scripts/【MacOS】split.command/Tests/【MacOS】FilePartsTests.zsh/README.md" filter=jobs-markdown-toc
+"/scripts/jrecord.command/README.md" filter=jobs-markdown-toc
+"/scripts/jrecord.command/Core/README.md" filter=jobs-markdown-toc
+"/scripts/jrecord.command/Tests/【MacOS】窗口录屏测试.command/README.md" filter=jobs-markdown-toc
+"/scripts/jrecord.command/Tests/【MacOS】倒计时测试.command/README.md" filter=jobs-markdown-toc
+"/scripts/jrecord.command/Tests/【MacOS】倒计时测试.command/Fixtures/README.md" filter=jobs-markdown-toc
+"/install.command/Tests/【MacOS】终端配色测试.command/README.md" filter=jobs-markdown-toc
+"/install.command/Tests/【MacOS】终端配色测试.command/terminal_style_pty_tests.py/README.md" filter=jobs-markdown-toc
+"/scripts/list.command/Tests/【MacOS】ListConfirmTests.zsh/README.md" filter=jobs-markdown-toc
+"/install.command/Tests/【MacOS】终端配色测试.command/terminal_query_retry_tests.py/README.md" filter=jobs-markdown-toc
 # jobs-markdown-toc:end

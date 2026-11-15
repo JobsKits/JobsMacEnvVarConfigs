@@ -68,46 +68,169 @@ jobs_terminal_style_run() {
     jobs_style_exit_status=0
     jobs_style_esc=$(printf '\033')
     jobs_style_bel=$(printf '\007')
-    # 只接受本次请求对应的 RGB 响应；非协议输入使本次探测失败。
+    # 完整颜色帧有界重发；仅退出恢复容忍帧外回车和明确方向键。
     jobs_terminal_style_query() {
         jobs_style_query_key=$1
-        printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || return 1
         jobs_style_reply=''
-        for jobs_style_attempt in 1 2 3; do
-            jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty)
-            jobs_style_reply=$jobs_style_reply$jobs_style_piece
-            case $jobs_style_reply in
-                *"$jobs_style_bel"|*"$jobs_style_esc\\") break ;;
-                '') ;;
-                "$jobs_style_esc"*) ;;
-                *) break ;;
-            esac
-        done
-        case $jobs_style_reply in
-            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_bel")
-                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
-                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_bel"}
-                ;;
-            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_esc\\")
-                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
-                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_esc\\"}
-                ;;
-            *) return 1 ;;
-        esac
-        jobs_style_normalized=$(printf '%s\n' "$jobs_style_rgb" | LC_ALL=C awk -F/ '
-            NF != 3 { exit 1 }
-            {
-                for (i = 1; i <= 3; i++) {
-                    h = tolower($i)
-                    if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) exit 1
-                    n = 0
-                    for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
-                    value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
-                }
-                printf "%d/%d/%d", value[1], value[2], value[3]
+        jobs_style_query_buffer=''
+        jobs_style_query_target_reply=''
+        jobs_style_query_target_normalized=''
+        jobs_style_query_target_rgb=''
+        jobs_style_query_st="${jobs_style_esc}\\"
+        jobs_style_query_stale_count=0
+        jobs_style_query_phase=${2:-strict}
+        jobs_style_query_cr=$(printf '\r')
+        jobs_style_query_lf=$(printf '\n.')
+        jobs_style_query_lf=${jobs_style_query_lf%.}
+        jobs_style_query_failure='未收到目标颜色的完整答复（最多 3 次查询，每次约 2 秒）'
+        for jobs_style_query_round in 1 2 3; do
+            printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || {
+                jobs_style_query_failure='无法向原终端发送配色查询'
+                return 1
             }
-        ') || return 1
-        [ -n "$jobs_style_normalized" ]
+            for jobs_style_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+                # 哨兵保留末尾换行，不能把只有回车的键盘输入误当成无答复。
+                jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty; printf '.')
+                jobs_style_piece=${jobs_style_piece%.}
+                jobs_style_query_buffer=$jobs_style_query_buffer$jobs_style_piece
+                while [ -n "$jobs_style_query_buffer" ]; do
+                    # 仅退出恢复阶段允许帧外的明确控制键，普通文字仍然失败。
+                    if [ "$jobs_style_query_phase" = cleanup ]; then
+                        jobs_style_query_control_sequence=''
+                        jobs_style_query_control_partial=0
+                        case $jobs_style_query_buffer in
+                            "$jobs_style_query_cr"*) jobs_style_query_control_sequence=$jobs_style_query_cr ;;
+                            "$jobs_style_query_lf"*) jobs_style_query_control_sequence=$jobs_style_query_lf ;;
+                        esac
+                        if [ -z "$jobs_style_query_control_sequence" ]; then
+                            for jobs_style_query_direction in A B C D; do
+                                for jobs_style_query_control_candidate in \
+                                    "${jobs_style_esc}[${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}O${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;2${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;3${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;4${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;5${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;6${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;7${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;8${jobs_style_query_direction}"; do
+                                    case $jobs_style_query_buffer in
+                                        "$jobs_style_query_control_candidate"*)
+                                            jobs_style_query_control_sequence=$jobs_style_query_control_candidate
+                                            break 2
+                                            ;;
+                                    esac
+                                    case $jobs_style_query_control_candidate in
+                                        "$jobs_style_query_buffer"*) jobs_style_query_control_partial=1 ;;
+                                    esac
+                                done
+                            done
+                        fi
+                        if [ -n "$jobs_style_query_control_sequence" ]; then
+                            jobs_style_cleanup_control_keys=$(( ${jobs_style_cleanup_control_keys:-0} + 1 ))
+                            if [ "$jobs_style_cleanup_control_keys" -gt 64 ]; then
+                                jobs_style_query_failure='退出恢复期间已识别控制键超过 64 个，已停止自动恢复'
+                                return 1
+                            fi
+                            jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_control_sequence"}
+                            continue
+                        fi
+                        if [ "$jobs_style_query_control_partial" = 1 ]; then
+                            break
+                        fi
+                    fi
+                    case $jobs_style_query_buffer in
+                        "$jobs_style_esc"|"$jobs_style_esc]") break ;;
+                        "$jobs_style_esc]"*) ;;
+                        *) jobs_style_query_failure='收到非配色查询输入，已停止读取'; return 1 ;;
+                    esac
+                    jobs_style_query_head=''
+                    jobs_style_query_terminator=''
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_bel"*)
+                            jobs_style_query_head=${jobs_style_query_buffer%%"$jobs_style_bel"*}
+                            jobs_style_query_terminator=$jobs_style_bel
+                            ;;
+                    esac
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_query_st"*)
+                            jobs_style_query_st_head=${jobs_style_query_buffer%%"$jobs_style_query_st"*}
+                            if [ -z "$jobs_style_query_terminator" ] ||
+                               [ "${#jobs_style_query_st_head}" -lt "${#jobs_style_query_head}" ]; then
+                                jobs_style_query_head=$jobs_style_query_st_head
+                                jobs_style_query_terminator=$jobs_style_query_st
+                            fi
+                            ;;
+                    esac
+                    [ -n "$jobs_style_query_terminator" ] || break
+                    jobs_style_query_frame=$jobs_style_query_head$jobs_style_query_terminator
+                    jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_frame"}
+                    jobs_style_query_body=${jobs_style_query_head#"$jobs_style_esc]"}
+                    case $jobs_style_query_body in
+                        *';rgb:'*) ;;
+                        *) jobs_style_query_failure='配色答复格式或 RGB 数据无效'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_key=${jobs_style_query_body%%';rgb:'*}
+                    case $jobs_style_query_frame_key in
+                        10|11|12|'4;'[0-9]|'4;1'[0-5]) ;;
+                        *) jobs_style_query_failure='收到不属于本次颜色协议的答复'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_rgb=${jobs_style_query_body#"$jobs_style_query_frame_key;rgb:"}
+                    jobs_style_query_frame_normalized=$(printf '%s\n' "$jobs_style_query_frame_rgb" | LC_ALL=C awk -F/ '
+                        BEGIN { valid = 1 }
+                        NR != 1 || NF != 3 { valid = 0; exit }
+                        {
+                            for (i = 1; i <= 3; i++) {
+                                h = tolower($i)
+                                if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) {
+                                    valid = 0
+                                    exit
+                                }
+                                n = 0
+                                for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                                value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                            }
+                        }
+                        END {
+                            if (!valid || NR != 1) exit 1
+                            printf "%d/%d/%d", value[1], value[2], value[3]
+                        }
+                    ')
+                    if [ -z "$jobs_style_query_frame_normalized" ]; then
+                        jobs_style_query_failure='配色答复格式或 RGB 数据无效'
+                        return 1
+                    fi
+                    if [ "$jobs_style_query_frame_key" = "$jobs_style_query_key" ]; then
+                        if [ -n "$jobs_style_query_target_reply" ] &&
+                           [ "$jobs_style_query_target_normalized" != "$jobs_style_query_frame_normalized" ]; then
+                            jobs_style_query_failure='同一颜色的重复答复不一致，已停止自动恢复'
+                            return 1
+                        fi
+                        jobs_style_query_target_reply=$jobs_style_query_frame
+                        jobs_style_query_target_normalized=$jobs_style_query_frame_normalized
+                        jobs_style_query_target_rgb=$jobs_style_query_frame_rgb
+                    else
+                        jobs_style_query_stale_count=$((jobs_style_query_stale_count + 1))
+                        if [ "$jobs_style_query_stale_count" -gt 128 ]; then
+                            jobs_style_query_failure='收到过多旧颜色答复，已停止读取'
+                            return 1
+                        fi
+                    fi
+                done
+                if [ -n "$jobs_style_query_target_reply" ] && [ -z "$jobs_style_query_buffer" ]; then
+                    jobs_style_reply=$jobs_style_query_target_reply
+                    jobs_style_normalized=$jobs_style_query_target_normalized
+                    jobs_style_rgb=$jobs_style_query_target_rgb
+                    return 0
+                fi
+            done
+            # 残缺帧不能通过重发拼成另一个答复，更不能被当成键盘空输入。
+            if [ -n "$jobs_style_query_buffer" ]; then
+                jobs_style_query_failure='配色答复帧不完整，已停止自动恢复'
+                return 1
+            fi
+        done
+        return 1
     }
     # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
     jobs_terminal_style_accepts_target() {
@@ -150,8 +273,10 @@ jobs_terminal_style_run() {
         fi
         if [ "$jobs_style_changed" = 1 ]; then
             jobs_style_cleanup_ok=0
+            jobs_style_cleanup_issue='无法读取或设置原终端输入模式，或临时配色未完成核验'
             jobs_style_conflicts=''
             jobs_style_restore_safe=''
+            jobs_style_cleanup_control_keys=0
             if [ "$jobs_style_applied_complete" = 1 ]; then
                 jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
                 if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
@@ -159,8 +284,9 @@ jobs_terminal_style_run() {
                     jobs_style_cleanup_ok=1
                     while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
                         [ -n "$jobs_style_key" ] || continue
-                        if ! jobs_terminal_style_query "$jobs_style_key"; then
+                        if ! jobs_terminal_style_query "$jobs_style_key" cleanup; then
                             jobs_style_cleanup_ok=0
+                            jobs_style_cleanup_issue="颜色项 $jobs_style_key：$jobs_style_query_failure"
                             break
                         fi
                         if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
@@ -171,7 +297,7 @@ jobs_terminal_style_run() {
                     done <<JOBS_STYLE_APPLIED
 $jobs_style_applied_rows
 JOBS_STYLE_APPLIED
-                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || jobs_style_cleanup_ok=0
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_cleanup_ok=0; jobs_style_cleanup_issue='无法恢复原终端输入模式'; }
                     jobs_style_query_active=0
                 fi
             fi
@@ -185,7 +311,7 @@ JOBS_STYLE_APPLIED
                     [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
                 fi
             else
-                printf '终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_recovery" >&2
+                printf '终端配色未能安全自动恢复（%s）；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_cleanup_issue" "$jobs_style_recovery" >&2
                 [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
             fi
         fi
@@ -196,9 +322,9 @@ JOBS_STYLE_APPLIED
         exit "$jobs_style_result"
     }
     trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
-    trap 'jobs_style_exit_status=129; exit 129' HUP
-    trap 'jobs_style_exit_status=130; exit 130' INT
-    trap 'jobs_style_exit_status=143; exit 143' TERM
+    trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+    trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+    trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
     if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
         jobs_terminal_style_plain "$@"
     fi
@@ -274,9 +400,9 @@ JOBS_STYLE_ORIGINAL
             jobs_style_exit_status=1
             exit 1
         fi
-        trap 'jobs_style_exit_status=129; exit 129' HUP
-        trap 'jobs_style_exit_status=130; exit 130' INT
-        trap 'jobs_style_exit_status=143; exit 143' TERM
+        trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+        trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+        trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
         printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
         jobs_terminal_style_plain "$@"
     fi
@@ -363,6 +489,10 @@ assert_no_mutation() {
     fail_test "不应执行设备变更：$(/bin/cat "$TEST_CALLS")"
   fi
 }
+# 允许按 UUID 关闭，但数据或复检不可靠时禁止注销。
+assert_no_delete() {
+  ! /usr/bin/grep -q '^delete|' "$TEST_CALLS" || fail_test "不应注销设备：$(/bin/cat "$TEST_CALLS")"
+}
 # 核对精确 UUID 对应的单条模拟器命令。
 assert_call() {
   /usr/bin/grep -Fxq -- "$1|$2" "$TEST_CALLS" || fail_test "缺少精确调用：$1|$2"
@@ -382,6 +512,11 @@ create_complete_device() {
   /bin/mkdir -p "$TEST_DEVICES/$uuid/data"
   print -r -- 'fixture-device-definition' > "$TEST_DEVICES/$uuid/device.plist"
   print -r -- 'fixture-app-data' > "$TEST_DEVICES/$uuid/data/important.txt"
+}
+# 模拟清理工具仅删掉定义、仍留下 App 数据的场景。
+create_partial_device() {
+  /bin/mkdir -p "$TEST_DEVICES/$1/data"
+  print -r -- 'do-not-lose-this-data' > "$TEST_DEVICES/$1/data/important.txt"
 }
 # 将假设备登记拼成 simctl 的设备清单格式。
 emit_mock_inventory() {
@@ -412,6 +547,17 @@ jobs_clean_simctl() {
       print -r -- "$calls" > "$TEST_CASE_DIR/list-count"
       print -r -- "list|$*" >> "$TEST_CALLS"
       [[ "$TEST_MODE" != query_failure ]] || return 9
+      if [[ -f "$TEST_CASE_DIR/shutdown-attempted" ]]; then
+        case "$TEST_MODE" in
+          query_after_shutdown) return 9 ;;
+          restore_after_shutdown) create_complete_device "$TEST_DEVICE_A" ;;
+          partial_after_shutdown) create_partial_device "$TEST_DEVICE_A" ;;
+          creating_after_shutdown) write_device_record "$TEST_DEVICE_A" Creating ;;
+          vanished_after_shutdown)
+            [[ ! -f "$TEST_META/$TEST_DEVICE_A.json" ]] || /bin/rm -- "$TEST_META/$TEST_DEVICE_A.json"
+            ;;
+        esac
+      fi
       if [[ "$TEST_MODE" == bad_json ]]; then print -r -- '{broken'; return 0; fi
       if [[ "$TEST_MODE" == bad_schema ]]; then print -r -- '{"unexpected":[]}'; return 0; fi
       if [[ "$TEST_MODE" == restore_on_query && "$calls" -ge 2 ]]; then
@@ -427,8 +573,15 @@ jobs_clean_simctl() {
       ;;
     shutdown)
       print -r -- "shutdown|$uuid" >> "$TEST_CALLS"
+      : > "$TEST_CASE_DIR/shutdown-attempted"
+      [[ "$TEST_MODE" != shutdown_cancelled ]] || return 130
       [[ "$TEST_MODE" != shutdown_failure ]] || return 8
       [[ "$TEST_MODE" != shutdown_false_success ]] || return 0
+      if [[ "$TEST_MODE" == shutdown_async || "$TEST_MODE" == shutdown_timeout ]]; then
+        write_device_record "$uuid" 'Shutting Down'
+        [[ "$TEST_MODE" != shutdown_timeout ]] || return 124
+        return 0
+      fi
       /usr/bin/sed 's/"state":"Booted"/"state":"Shutdown"/' "$TEST_META/$uuid.json" > "$TEST_META/$uuid.next"
       /bin/mv "$TEST_META/$uuid.next" "$TEST_META/$uuid.json"
       ;;
@@ -507,17 +660,97 @@ test_booted_orphan_is_shutdown_first() {
   local mutations="$(/usr/bin/grep -E '^(shutdown|delete)\|' "$TEST_CALLS")"
   assert_equal $'shutdown|'"$TEST_DEVICE_A"$'\ndelete|'"$TEST_DEVICE_A" "$mutations" '关闭与注销顺序错误'
 }
-# 工具错误和假成功必须保留对应记录并返回失败。
+# 仍有数据时，关闭失败和假成功不能越过活数据保护。
 test_tool_failure() {
   TEST_MODE="$JOBS_CLEAN_SIM_TEST_CASE"
   local state=Shutdown
   [[ "$TEST_MODE" != shutdown* ]] || state=Booted
   write_device_record "$TEST_DEVICE_A" "$state"
+  [[ "$TEST_MODE" != shutdown* ]] || create_partial_device "$TEST_DEVICE_A"
   if jobs_clean_orphaned_simulators; then fail_test '工具失败或未注销不能报告成功'; return 1; fi
   [[ -f "$TEST_META/$TEST_DEVICE_A.json" ]] || fail_test '失败后登记应保留' || return 1
   if [[ "$TEST_MODE" == shutdown* ]]; then
     ! /usr/bin/grep -q '^delete|' "$TEST_CALLS" || fail_test '关闭失败后不应注销'
   fi
+}
+# 目录完全缺失时，关闭卡住、超时或假成功仍只注销这一条 UUID。
+test_missing_directory_shutdown_recovery() {
+  local state=Booted
+  case "$JOBS_CLEAN_SIM_TEST_CASE" in
+    async_missing) TEST_MODE=shutdown_async ;;
+    shutting_down_missing) state='Shutting Down' ;;
+    shutdown_failure_missing) TEST_MODE=shutdown_failure ;;
+    shutdown_timeout_missing) TEST_MODE=shutdown_timeout ;;
+    shutdown_false_success_missing) TEST_MODE=shutdown_false_success ;;
+  esac
+  write_device_record "$TEST_DEVICE_A" "$state"
+  write_device_record "$TEST_DEVICE_B" Booted
+  create_complete_device "$TEST_DEVICE_B"
+  jobs_clean_orphaned_simulators || return 1
+  local expected="delete|$TEST_DEVICE_A"
+  [[ "$state" != Booted ]] || expected=$'shutdown|'"$TEST_DEVICE_A"$'\n'"$expected"
+  assert_equal "$expected" "$(/usr/bin/grep -E '^(shutdown|delete)\|' "$TEST_CALLS")" '残留恢复须限定 UUID 与调用顺序' || return 1
+  [[ ! -e "$TEST_META/$TEST_DEVICE_A.json" && -f "$TEST_META/$TEST_DEVICE_B.json" && -f "$TEST_DEVICES/$TEST_DEVICE_B/device.plist" ]] || fail_test '只应移除缺失实体的登记'
+}
+# 留有数据的异步关闭设备不能进入无目录恢复分支。
+test_partial_shutdown_is_preserved() {
+  local state=Booted
+  case "$JOBS_CLEAN_SIM_TEST_CASE" in
+    async_partial) TEST_MODE=shutdown_async ;;
+    shutting_down_partial) state='Shutting Down' ;;
+  esac
+  write_device_record "$TEST_DEVICE_A" "$state"
+  create_partial_device "$TEST_DEVICE_A"
+  local result=0
+  jobs_clean_orphaned_simulators || result=$?
+  (( result != 0 )) || fail_test '留有数据且尚未关闭的设备应报告未完成' || return 1
+  assert_no_delete || return 1
+  [[ "$state" == Booted ]] || assert_no_mutation || return 1
+  [[ -f "$TEST_META/$TEST_DEVICE_A.json" ]] || fail_test '活数据设备登记应保留' || return 1
+  assert_equal 'do-not-lose-this-data' "$(/bin/cat "$TEST_DEVICES/$TEST_DEVICE_A/data/important.txt")" '活数据被修改'
+}
+# 关闭之后的查询失败、实体恢复或未知状态不得沿用无目录快照注销。
+test_shutdown_recheck_is_required() {
+  TEST_MODE="$JOBS_CLEAN_SIM_TEST_CASE"
+  write_device_record "$TEST_DEVICE_A" Booted
+  local result=0
+  jobs_clean_orphaned_simulators || result=$?
+  assert_call shutdown "$TEST_DEVICE_A" || return 1
+  assert_no_delete || return 1
+  [[ -f "$TEST_META/$TEST_DEVICE_A.json" ]] || fail_test '复检变化后登记应保留' || return 1
+  if [[ "$TEST_MODE" == query_after_shutdown ]]; then
+    (( result != 0 )) || fail_test '关闭后查询失败应报告未完成'
+  fi
+}
+# 起始卡在关闭中的缺实体项，注销失败或假成功仍须返回失败。
+test_stuck_delete_failure() {
+  case "$JOBS_CLEAN_SIM_TEST_CASE" in
+    stuck_delete_failure) TEST_MODE=delete_failure ;;
+    stuck_delete_false_success) TEST_MODE=delete_false_success ;;
+  esac
+  write_device_record "$TEST_DEVICE_A" 'Shutting Down'
+  if jobs_clean_orphaned_simulators; then fail_test '未注销不能报告恢复成功'; return 1; fi
+  assert_call delete "$TEST_DEVICE_A" || return 1
+  assert_equal "delete|$TEST_DEVICE_A" "$(/usr/bin/grep -E '^(shutdown|delete)\|' "$TEST_CALLS")" '不得重复关闭卡住的设备' || return 1
+  [[ -f "$TEST_META/$TEST_DEVICE_A.json" ]] || fail_test '注销失败后登记应保留'
+}
+# 取消关闭须原样传播，不能把取消当作缺实体恢复的机会。
+test_shutdown_cancel_is_preserved() {
+  TEST_MODE=shutdown_cancelled
+  write_device_record "$TEST_DEVICE_A" Booted
+  local result=0
+  jobs_clean_orphaned_simulators || result=$?
+  assert_equal 130 "$result" '取消状态应传播' || return 1
+  assert_equal "shutdown|$TEST_DEVICE_A" "$(/usr/bin/grep -E '^(shutdown|delete)\|' "$TEST_CALLS")" '取消后不得注销' || return 1
+  [[ -f "$TEST_META/$TEST_DEVICE_A.json" ]] || fail_test '取消后登记应保留'
+}
+# 其它客户端已移除登记时，不再向消失的 UUID 发第二次注销。
+test_external_removal_is_respected() {
+  TEST_MODE=vanished_after_shutdown
+  write_device_record "$TEST_DEVICE_A" Booted
+  jobs_clean_orphaned_simulators || return 1
+  assert_equal "shutdown|$TEST_DEVICE_A" "$(/usr/bin/grep -E '^(shutdown|delete)\|' "$TEST_CALLS")" '已消失设备不应再次注销' || return 1
+  [[ ! -e "$TEST_META/$TEST_DEVICE_A.json" ]] || fail_test '应看到其它客户端移除的登记'
 }
 # 写前复检若发现设备实体恢复，保留它而不覆盖并发变化。
 test_recovered_device_is_preserved() {
@@ -626,6 +859,13 @@ run_selected_case() {
     missing_data) test_data_only_missing_is_preserved ;;
     booted) test_booted_orphan_is_shutdown_first ;;
     shutdown_failure|shutdown_false_success|delete_failure|delete_false_success) test_tool_failure ;;
+    async_missing|shutting_down_missing|shutdown_failure_missing|shutdown_timeout_missing|shutdown_false_success_missing) test_missing_directory_shutdown_recovery ;;
+    async_partial|shutting_down_partial) test_partial_shutdown_is_preserved ;;
+    shutdown_timeout) test_tool_failure ;;
+    query_after_shutdown|restore_after_shutdown|partial_after_shutdown|creating_after_shutdown) test_shutdown_recheck_is_required ;;
+    stuck_delete_failure|stuck_delete_false_success) test_stuck_delete_failure ;;
+    shutdown_cancelled) test_shutdown_cancel_is_preserved ;;
+    vanished_after_shutdown) test_external_removal_is_respected ;;
     recovered) test_recovered_device_is_preserved ;;
     restore_late|change_data) test_late_changes_are_preserved ;;
     backup_failure) test_backup_failure_preserves_device ;;
@@ -646,7 +886,7 @@ run_all_cases() {
   : > "$TEST_ROOT/.jobs-clean-simulator-tests"
   trap cleanup_test_root EXIT
   local case_name='' case_home='' passed=0 failed=0
-  local -a cases=(complete missing_directory missing_plist missing_data booted shutdown_failure shutdown_false_success delete_failure delete_false_success recovered restore_late change_data backup_failure query_failure bad_json bad_schema invalid_uuid outside_path non_ios unknown_state device_symlink plist_symlink trash_symlink device_set_symlink unreadable no_confirmation idempotent)
+  local -a cases=(complete missing_directory missing_plist missing_data booted shutdown_failure shutdown_false_success shutdown_timeout delete_failure delete_false_success async_missing shutting_down_missing shutdown_failure_missing shutdown_timeout_missing shutdown_false_success_missing async_partial shutting_down_partial query_after_shutdown restore_after_shutdown partial_after_shutdown creating_after_shutdown stuck_delete_failure stuck_delete_false_success shutdown_cancelled vanished_after_shutdown recovered restore_late change_data backup_failure query_failure bad_json bad_schema invalid_uuid outside_path non_ios unknown_state device_symlink plist_symlink trash_symlink device_set_symlink unreadable no_confirmation idempotent)
   for case_name in "${cases[@]}"; do
     case_home="$TEST_ROOT/$case_name/home space 中文"
     /bin/mkdir -p "$case_home/tmp"

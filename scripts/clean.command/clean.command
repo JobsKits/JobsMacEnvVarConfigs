@@ -68,46 +68,169 @@ jobs_terminal_style_run() {
     jobs_style_exit_status=0
     jobs_style_esc=$(printf '\033')
     jobs_style_bel=$(printf '\007')
-    # 只接受本次请求对应的 RGB 响应；非协议输入使本次探测失败。
+    # 完整颜色帧有界重发；仅退出恢复容忍帧外回车和明确方向键。
     jobs_terminal_style_query() {
         jobs_style_query_key=$1
-        printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || return 1
         jobs_style_reply=''
-        for jobs_style_attempt in 1 2 3; do
-            jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty)
-            jobs_style_reply=$jobs_style_reply$jobs_style_piece
-            case $jobs_style_reply in
-                *"$jobs_style_bel"|*"$jobs_style_esc\\") break ;;
-                '') ;;
-                "$jobs_style_esc"*) ;;
-                *) break ;;
-            esac
-        done
-        case $jobs_style_reply in
-            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_bel")
-                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
-                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_bel"}
-                ;;
-            "$jobs_style_esc]$jobs_style_query_key;rgb:"*"$jobs_style_esc\\")
-                jobs_style_rgb=${jobs_style_reply#"$jobs_style_esc]$jobs_style_query_key;rgb:"}
-                jobs_style_rgb=${jobs_style_rgb%"$jobs_style_esc\\"}
-                ;;
-            *) return 1 ;;
-        esac
-        jobs_style_normalized=$(printf '%s\n' "$jobs_style_rgb" | LC_ALL=C awk -F/ '
-            NF != 3 { exit 1 }
-            {
-                for (i = 1; i <= 3; i++) {
-                    h = tolower($i)
-                    if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) exit 1
-                    n = 0
-                    for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
-                    value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
-                }
-                printf "%d/%d/%d", value[1], value[2], value[3]
+        jobs_style_query_buffer=''
+        jobs_style_query_target_reply=''
+        jobs_style_query_target_normalized=''
+        jobs_style_query_target_rgb=''
+        jobs_style_query_st="${jobs_style_esc}\\"
+        jobs_style_query_stale_count=0
+        jobs_style_query_phase=${2:-strict}
+        jobs_style_query_cr=$(printf '\r')
+        jobs_style_query_lf=$(printf '\n.')
+        jobs_style_query_lf=${jobs_style_query_lf%.}
+        jobs_style_query_failure='未收到目标颜色的完整答复（最多 3 次查询，每次约 2 秒）'
+        for jobs_style_query_round in 1 2 3; do
+            printf '\033]%s;?\007' "$jobs_style_query_key" > /dev/tty || {
+                jobs_style_query_failure='无法向原终端发送配色查询'
+                return 1
             }
-        ') || return 1
-        [ -n "$jobs_style_normalized" ]
+            for jobs_style_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+                # 哨兵保留末尾换行，不能把只有回车的键盘输入误当成无答复。
+                jobs_style_piece=$(dd bs=256 count=1 2>/dev/null < /dev/tty; printf '.')
+                jobs_style_piece=${jobs_style_piece%.}
+                jobs_style_query_buffer=$jobs_style_query_buffer$jobs_style_piece
+                while [ -n "$jobs_style_query_buffer" ]; do
+                    # 仅退出恢复阶段允许帧外的明确控制键，普通文字仍然失败。
+                    if [ "$jobs_style_query_phase" = cleanup ]; then
+                        jobs_style_query_control_sequence=''
+                        jobs_style_query_control_partial=0
+                        case $jobs_style_query_buffer in
+                            "$jobs_style_query_cr"*) jobs_style_query_control_sequence=$jobs_style_query_cr ;;
+                            "$jobs_style_query_lf"*) jobs_style_query_control_sequence=$jobs_style_query_lf ;;
+                        esac
+                        if [ -z "$jobs_style_query_control_sequence" ]; then
+                            for jobs_style_query_direction in A B C D; do
+                                for jobs_style_query_control_candidate in \
+                                    "${jobs_style_esc}[${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}O${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;2${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;3${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;4${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;5${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;6${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;7${jobs_style_query_direction}" \
+                                    "${jobs_style_esc}[1;8${jobs_style_query_direction}"; do
+                                    case $jobs_style_query_buffer in
+                                        "$jobs_style_query_control_candidate"*)
+                                            jobs_style_query_control_sequence=$jobs_style_query_control_candidate
+                                            break 2
+                                            ;;
+                                    esac
+                                    case $jobs_style_query_control_candidate in
+                                        "$jobs_style_query_buffer"*) jobs_style_query_control_partial=1 ;;
+                                    esac
+                                done
+                            done
+                        fi
+                        if [ -n "$jobs_style_query_control_sequence" ]; then
+                            jobs_style_cleanup_control_keys=$(( ${jobs_style_cleanup_control_keys:-0} + 1 ))
+                            if [ "$jobs_style_cleanup_control_keys" -gt 64 ]; then
+                                jobs_style_query_failure='退出恢复期间已识别控制键超过 64 个，已停止自动恢复'
+                                return 1
+                            fi
+                            jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_control_sequence"}
+                            continue
+                        fi
+                        if [ "$jobs_style_query_control_partial" = 1 ]; then
+                            break
+                        fi
+                    fi
+                    case $jobs_style_query_buffer in
+                        "$jobs_style_esc"|"$jobs_style_esc]") break ;;
+                        "$jobs_style_esc]"*) ;;
+                        *) jobs_style_query_failure='收到非配色查询输入，已停止读取'; return 1 ;;
+                    esac
+                    jobs_style_query_head=''
+                    jobs_style_query_terminator=''
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_bel"*)
+                            jobs_style_query_head=${jobs_style_query_buffer%%"$jobs_style_bel"*}
+                            jobs_style_query_terminator=$jobs_style_bel
+                            ;;
+                    esac
+                    case $jobs_style_query_buffer in
+                        *"$jobs_style_query_st"*)
+                            jobs_style_query_st_head=${jobs_style_query_buffer%%"$jobs_style_query_st"*}
+                            if [ -z "$jobs_style_query_terminator" ] ||
+                               [ "${#jobs_style_query_st_head}" -lt "${#jobs_style_query_head}" ]; then
+                                jobs_style_query_head=$jobs_style_query_st_head
+                                jobs_style_query_terminator=$jobs_style_query_st
+                            fi
+                            ;;
+                    esac
+                    [ -n "$jobs_style_query_terminator" ] || break
+                    jobs_style_query_frame=$jobs_style_query_head$jobs_style_query_terminator
+                    jobs_style_query_buffer=${jobs_style_query_buffer#"$jobs_style_query_frame"}
+                    jobs_style_query_body=${jobs_style_query_head#"$jobs_style_esc]"}
+                    case $jobs_style_query_body in
+                        *';rgb:'*) ;;
+                        *) jobs_style_query_failure='配色答复格式或 RGB 数据无效'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_key=${jobs_style_query_body%%';rgb:'*}
+                    case $jobs_style_query_frame_key in
+                        10|11|12|'4;'[0-9]|'4;1'[0-5]) ;;
+                        *) jobs_style_query_failure='收到不属于本次颜色协议的答复'; return 1 ;;
+                    esac
+                    jobs_style_query_frame_rgb=${jobs_style_query_body#"$jobs_style_query_frame_key;rgb:"}
+                    jobs_style_query_frame_normalized=$(printf '%s\n' "$jobs_style_query_frame_rgb" | LC_ALL=C awk -F/ '
+                        BEGIN { valid = 1 }
+                        NR != 1 || NF != 3 { valid = 0; exit }
+                        {
+                            for (i = 1; i <= 3; i++) {
+                                h = tolower($i)
+                                if (length(h) < 1 || length(h) > 4 || h ~ /[^0-9a-f]/) {
+                                    valid = 0
+                                    exit
+                                }
+                                n = 0
+                                for (j = 1; j <= length(h); j++) n = n * 16 + index("0123456789abcdef", substr(h, j, 1)) - 1
+                                value[i] = int(n * 65535 / (16 ^ length(h) - 1) + 0.5)
+                            }
+                        }
+                        END {
+                            if (!valid || NR != 1) exit 1
+                            printf "%d/%d/%d", value[1], value[2], value[3]
+                        }
+                    ')
+                    if [ -z "$jobs_style_query_frame_normalized" ]; then
+                        jobs_style_query_failure='配色答复格式或 RGB 数据无效'
+                        return 1
+                    fi
+                    if [ "$jobs_style_query_frame_key" = "$jobs_style_query_key" ]; then
+                        if [ -n "$jobs_style_query_target_reply" ] &&
+                           [ "$jobs_style_query_target_normalized" != "$jobs_style_query_frame_normalized" ]; then
+                            jobs_style_query_failure='同一颜色的重复答复不一致，已停止自动恢复'
+                            return 1
+                        fi
+                        jobs_style_query_target_reply=$jobs_style_query_frame
+                        jobs_style_query_target_normalized=$jobs_style_query_frame_normalized
+                        jobs_style_query_target_rgb=$jobs_style_query_frame_rgb
+                    else
+                        jobs_style_query_stale_count=$((jobs_style_query_stale_count + 1))
+                        if [ "$jobs_style_query_stale_count" -gt 128 ]; then
+                            jobs_style_query_failure='收到过多旧颜色答复，已停止读取'
+                            return 1
+                        fi
+                    fi
+                done
+                if [ -n "$jobs_style_query_target_reply" ] && [ -z "$jobs_style_query_buffer" ]; then
+                    jobs_style_reply=$jobs_style_query_target_reply
+                    jobs_style_normalized=$jobs_style_query_target_normalized
+                    jobs_style_rgb=$jobs_style_query_target_rgb
+                    return 0
+                fi
+            done
+            # 残缺帧不能通过重发拼成另一个答复，更不能被当成键盘空输入。
+            if [ -n "$jobs_style_query_buffer" ]; then
+                jobs_style_query_failure='配色答复帧不完整，已停止自动恢复'
+                return 1
+            fi
+        done
+        return 1
     }
     # 查询可用不代表终端允许改色，按目标值核对实际生效结果。
     jobs_terminal_style_accepts_target() {
@@ -150,8 +273,10 @@ jobs_terminal_style_run() {
         fi
         if [ "$jobs_style_changed" = 1 ]; then
             jobs_style_cleanup_ok=0
+            jobs_style_cleanup_issue='无法读取或设置原终端输入模式，或临时配色未完成核验'
             jobs_style_conflicts=''
             jobs_style_restore_safe=''
+            jobs_style_cleanup_control_keys=0
             if [ "$jobs_style_applied_complete" = 1 ]; then
                 jobs_style_stty=$(stty -g 2>/dev/null < /dev/tty) || jobs_style_stty=''
                 if [ -n "$jobs_style_stty" ] && stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
@@ -159,8 +284,9 @@ jobs_terminal_style_run() {
                     jobs_style_cleanup_ok=1
                     while IFS='|' read -r jobs_style_key jobs_style_expected jobs_style_original; do
                         [ -n "$jobs_style_key" ] || continue
-                        if ! jobs_terminal_style_query "$jobs_style_key"; then
+                        if ! jobs_terminal_style_query "$jobs_style_key" cleanup; then
                             jobs_style_cleanup_ok=0
+                            jobs_style_cleanup_issue="颜色项 $jobs_style_key：$jobs_style_query_failure"
                             break
                         fi
                         if [ "$jobs_style_normalized" = "$jobs_style_expected" ]; then
@@ -171,7 +297,7 @@ jobs_terminal_style_run() {
                     done <<JOBS_STYLE_APPLIED
 $jobs_style_applied_rows
 JOBS_STYLE_APPLIED
-                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || jobs_style_cleanup_ok=0
+                    stty "$jobs_style_stty" 2>/dev/null < /dev/tty || { jobs_style_cleanup_ok=0; jobs_style_cleanup_issue='无法恢复原终端输入模式'; }
                     jobs_style_query_active=0
                 fi
             fi
@@ -185,7 +311,7 @@ JOBS_STYLE_APPLIED
                     [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
                 fi
             else
-                printf '终端配色未能安全自动恢复；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_recovery" >&2
+                printf '终端配色未能安全自动恢复（%s）；确认覆盖当前配色后可运行：sh "%s"\n' "$jobs_style_cleanup_issue" "$jobs_style_recovery" >&2
                 [ "$jobs_style_result" -ne 0 ] || jobs_style_result=1
             fi
         fi
@@ -196,9 +322,9 @@ JOBS_STYLE_APPLIED
         exit "$jobs_style_result"
     }
     trap 'jobs_terminal_style_cleanup "$jobs_style_exit_status"' 0
-    trap 'jobs_style_exit_status=129; exit 129' HUP
-    trap 'jobs_style_exit_status=130; exit 130' INT
-    trap 'jobs_style_exit_status=143; exit 143' TERM
+    trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+    trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+    trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
     if ! stty -echo -icanon min 0 time 1 2>/dev/null < /dev/tty; then
         jobs_terminal_style_plain "$@"
     fi
@@ -274,9 +400,9 @@ JOBS_STYLE_ORIGINAL
             jobs_style_exit_status=1
             exit 1
         fi
-        trap 'jobs_style_exit_status=129; exit 129' HUP
-        trap 'jobs_style_exit_status=130; exit 130' INT
-        trap 'jobs_style_exit_status=143; exit 143' TERM
+        trap 'jobs_style_exit_status=129; jobs_terminal_style_cleanup 129 continue; jobs_style_changed=0; exit 129' HUP
+        trap 'jobs_style_exit_status=130; jobs_terminal_style_cleanup 130 continue; jobs_style_changed=0; exit 130' INT
+        trap 'jobs_style_exit_status=143; jobs_terminal_style_cleanup 143 continue; jobs_style_changed=0; exit 143' TERM
         printf '%s\n' '终端未接受本次配色，已恢复原配色并使用纯文本。' >&2
         jobs_terminal_style_plain "$@"
     fi
@@ -330,6 +456,46 @@ jobs_terminal_style_bootstrap() {
 }
 jobs_terminal_style_bootstrap "$0" "$@"
 # <<< Jobs terminal style protection v1 <<<
+
+# >>> Jobs list parent confirmation >>>
+# 只读确认键；返回码20仅交给实际启动本功能的list父菜单。
+jobs_list_confirm_start() {
+  emulate -L zsh
+  local jobs_list_key='' jobs_list_prefix='' jobs_list_direction=''
+  [[ -t 0 ]] || return 130
+  print -u2 -n -r -- '按回车继续；← 返回功能菜单；Esc / Ctrl+C 取消：'
+  while true; do
+    IFS= read -rsk1 jobs_list_key || return 130
+    case "$jobs_list_key" in
+      $'\r'|$'\n') print -u2; return 0 ;;
+      $'\e')
+        jobs_list_prefix=''
+        IFS= read -rsk1 -t 0.12 jobs_list_prefix || { print -u2; return 130; }
+        case "$jobs_list_prefix" in
+          '['|'O')
+            jobs_list_direction=''
+            IFS= read -rsk1 -t 0.12 jobs_list_direction || { print -u2; return 130; }
+            [[ "$jobs_list_direction" != D ]] || { print -u2; return 20; }
+            ;;
+          *) print -u2; return 130 ;;
+        esac
+        ;;
+      $'\003') print -u2; return 130 ;;
+    esac
+  done
+}
+# 独立启动保留原read参数；list来源的返回/取消立即结束子脚本而不执行业务。
+jobs_list_intro_read() {
+  if [[ "${JOBS_LIST_PARENT_MENU:-}" != list ]]; then
+    builtin read "$@"
+    return $?
+  fi
+  local jobs_list_confirm_status=0
+  jobs_list_confirm_start || jobs_list_confirm_status=$?
+  (( jobs_list_confirm_status == 0 )) || exit "$jobs_list_confirm_status"
+}
+# <<< Jobs list parent confirmation <<<
+
 
 
 # ---------- 基础路径 ----------
@@ -622,7 +788,8 @@ clean - 终端清理
   - 只移动用户目录中 Build/Products 或 build/*-iphone 等开发输出下的 .app。
   - 不移动 Applications 里的正常 App，不移动正常 CoreSimulator 设备容器中的 App 实体。
   - 模拟器目录或 device.plist 已缺失才注销；仅 data 缺失或 Runtime 不可用的设备保留。
-  - 只关闭待注销的损坏设备；残留目录先备份到废纸篓，正常设备与共享 Runtime 保留。
+  - 只关闭待注销的损坏设备；实体目录完全缺失时，关闭失败或卡在 Shutting Down 仍尝试按 UUID 注销。
+  - 仍有残留目录时，须确认已关闭并完成备份；正常设备与共享 Runtime 保留。
   - 构建 App 会保留在废纸篓的 JobsClean-DevelopmentApps-* 目录中，可恢复或重新构建。
   - 会短暂重启 Spotlight、corespotlightd、sharedfilelistd 和 Dock，界面可能闪烁一次。
   - 日志路径：${LOG_FILE}
@@ -634,7 +801,7 @@ EOFREADME
     return 1
   fi
   local answer=""
-  if ! read -r "?$(jobs_prompt_render "👉 已了解缓存、历史、构建 App 和失效模拟器登记的清理范围，按回车继续；按 Ctrl+C 取消：")" answer; then
+  if ! jobs_list_intro_read -r "?$(jobs_prompt_render "👉 已了解缓存、历史、构建 App 和失效模拟器登记的清理范围，按回车继续；按 Ctrl+C 取消：")" answer; then
     print -r -- '无法读取确认输入，已取消 clean，未执行任何清理。' | jobs_intro_style body
     return 1
   fi
@@ -785,10 +952,20 @@ jobs_clean_simulator_recheck() {
   jobs_clean_simulator_rows "$snapshot" "$devices_dir" > "$snapshot.rows" 2>> "$LOG_FILE" || return 2
   jobs_clean_simulator_missing "$devices_dir" "$uuid" || check_result=$?
   (( check_result == 0 )) || return "$check_result"
+  # 整台目录已不存在时没有可备份的活数据，允许系统直接注销关闭卡住的同一设备。
+  if [[ "$expected_state" == missing-directory ]]; then
+    [[ ! -e "$devices_dir/$uuid" && ! -L "$devices_dir/$uuid" ]] || return 1
+    /usr/bin/grep -Fxq -- "$uuid"$'\tShutdown' "$snapshot.rows" && return 0
+    /usr/bin/grep -Fxq -- "$uuid"$'\tBooted' "$snapshot.rows" && return 0
+    /usr/bin/grep -Fxq -- "$uuid"$'\tShutting Down' "$snapshot.rows" && return 0
+    /usr/bin/grep -q -- "^$uuid"$'\t' "$snapshot.rows" && return 2
+    return 1
+  fi
   /usr/bin/grep -Fxq -- "$uuid"$'\t'"$expected_state" "$snapshot.rows" && return 0
   # 关闭命令假成功时不能把仍在运行的损坏设备当作清理完成。
-  if [[ "$expected_state" == Shutdown ]] && /usr/bin/grep -Fxq -- "$uuid"$'\tBooted' "$snapshot.rows"; then
-    return 2
+  if [[ "$expected_state" == Shutdown ]]; then
+    /usr/bin/grep -Fxq -- "$uuid"$'\tBooted' "$snapshot.rows" && return 2
+    /usr/bin/grep -Fxq -- "$uuid"$'\tShutting Down' "$snapshot.rows" && return 2
   fi
   return 1
 }
@@ -797,7 +974,7 @@ jobs_clean_orphaned_simulators() {
   emulate -L zsh
   (( JOBS_CLEAN_CONFIRMED == 1 )) || return 1
   local devices_dir="${HOME:A}/Library/Developer/CoreSimulator/Devices" scan_dir="" backup_dir=""
-  local uuid="" device_state="" entry="" result=0 query_result=0
+  local uuid="" device_state="" recheck_state="" entry="" result=0 query_result=0 shutdown_result=0
   local -i candidates=0 removed=0 failed=0 skipped=0
   scan_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/JobsClean-SimulatorScan.XXXXXXXX")" || return 1
   jobs_clean_simctl "$devices_dir" list devices --json > "$scan_dir/before.json" 2>> "$LOG_FILE" || query_result=$?
@@ -815,15 +992,25 @@ jobs_clean_orphaned_simulators() {
     result=0
     jobs_clean_simulator_missing "$devices_dir" "$uuid" || result=$?
     (( result != 1 )) || continue
-    if (( result == 2 )) || [[ "$device_state" != Shutdown && "$device_state" != Booted ]]; then
+    if (( result == 2 )) || [[ "$device_state" != Shutdown && "$device_state" != Booted && "$device_state" != 'Shutting Down' ]]; then
       ((skipped += 1))
       (( result != 2 )) || ((failed += 1))
       warn_echo "设备路径不可靠或正在转换状态，保留：$uuid ($device_state)"
       continue
     fi
+    entry="$devices_dir/$uuid"
+    recheck_state="$device_state"
+    if [[ ! -e "$entry" && ! -L "$entry" ]]; then
+      recheck_state=missing-directory
+    elif [[ "$device_state" == 'Shutting Down' ]]; then
+      ((skipped += 1))
+      ((failed += 1))
+      warn_echo "设备仍在关闭且有残留目录，保留数据；关闭完成后可重试：$uuid"
+      continue
+    fi
     ((candidates += 1))
     result=0
-    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$device_state" "$scan_dir/$uuid.precheck.json" || result=$?
+    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$recheck_state" "$scan_dir/$uuid.precheck.json" || result=$?
     if (( result != 0 )); then
       ((skipped += 1))
       (( result != 2 )) || ((failed += 1))
@@ -840,22 +1027,29 @@ jobs_clean_orphaned_simulators() {
       note_echo "模拟器清理备份：$backup_dir"
     fi
     if [[ "$device_state" == Booted ]]; then
-      if ! jobs_clean_simctl "$devices_dir" shutdown "$uuid" >> "$LOG_FILE" 2>&1; then
+      shutdown_result=0
+      jobs_clean_simctl "$devices_dir" shutdown "$uuid" >> "$LOG_FILE" 2>&1 || shutdown_result=$?
+      case "$shutdown_result" in
+        129|130|143) return "$shutdown_result" ;;
+      esac
+      if (( shutdown_result != 0 )) && [[ "$recheck_state" != missing-directory ]]; then
         ((failed += 1))
         warn_echo "损坏设备关闭失败，保留：$uuid"
         continue
       fi
-      device_state=Shutdown
+      if (( shutdown_result != 0 )); then
+        warn_echo "设备关闭未完成（退出码 $shutdown_result）；复检实体目录仍缺失后尝试精确注销：$uuid"
+      fi
+      [[ "$recheck_state" == missing-directory ]] || recheck_state=Shutdown
     fi
     result=0
-    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$device_state" "$scan_dir/$uuid.shutdown.json" || result=$?
+    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$recheck_state" "$scan_dir/$uuid.shutdown.json" || result=$?
     if (( result != 0 )); then
       ((skipped += 1))
       (( result != 2 )) || ((failed += 1))
       warn_echo "关闭后设备已变化或无法复检，保留：$uuid"
       continue
     fi
-    entry="$devices_dir/$uuid"
     if [[ -d "$entry" ]]; then
       if ! /usr/bin/ditto "$entry" "$backup_dir/$uuid" >> "$LOG_FILE" 2>&1 ||
          ! /usr/bin/diff -qr "$entry" "$backup_dir/$uuid" >> "$LOG_FILE" 2>&1; then
@@ -865,7 +1059,7 @@ jobs_clean_orphaned_simulators() {
       fi
     fi
     result=0
-    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$device_state" "$scan_dir/$uuid.delete.json" || result=$?
+    jobs_clean_simulator_recheck "$devices_dir" "$uuid" "$recheck_state" "$scan_dir/$uuid.delete.json" || result=$?
     if (( result != 0 )) || { [[ -d "$entry" ]] && ! /usr/bin/diff -qr "$entry" "$backup_dir/$uuid" >> "$LOG_FILE" 2>&1; }; then
       ((skipped += 1))
       (( result != 2 )) || ((failed += 1))

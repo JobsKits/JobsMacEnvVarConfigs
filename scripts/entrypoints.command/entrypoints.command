@@ -6,6 +6,12 @@
 # - 运行提示：运行后会先打印内置自述；终端模式按回车确认后继续，按 Ctrl+C 可取消。
 # JobsMacEnv executable command wrappers.
 # 这里只注册终端短命令；真实实现统一放在 Scripts/<命令>.command/<命令>.command。
+# 在 source 时固定模块所在目录，之后切换工作目录仍能定位相邻录屏包。
+_jobs_initialize_entrypoints_location() {
+  emulate -L zsh
+  local module_file="${(%):-%x}"
+  typeset -g JOBS_MAC_ENV_ENTRYPOINTS_SCRIPTS_DIR="${${module_file:A}:h:h}"
+}
 # 封装 _jobs_resolve_scripts_command 对应的独立处理逻辑。
 _jobs_resolve_scripts_command() {
   emulate -L zsh
@@ -14,10 +20,20 @@ _jobs_resolve_scripts_command() {
   local env_home="${JOBS_MAC_ENV_HOME:-$HOME/.JobsMacEnv}"
   local scripts_dir="$env_home/Scripts"
   local script_file="${command_name}.command"
+  case "$command_name" in
+    jsplit) script_file='【MacOS】split.command' ;;
+    jmerge) script_file='【MacOS】merge.command' ;;
+    jrecord) script_file='jrecord.command' ;;
+  esac
   local candidates=(
     "$scripts_dir/$script_file/$script_file"
     "$scripts_dir/$script_file"
   )
+
+  if [[ "$command_name" == jrecord && -n "${JOBS_MAC_ENV_ENTRYPOINTS_SCRIPTS_DIR:-}" ]]; then
+    local module_scripts_dir="$JOBS_MAC_ENV_ENTRYPOINTS_SCRIPTS_DIR"
+    candidates=("$module_scripts_dir/$script_file/$script_file" "${candidates[@]}")
+  fi
 
   local candidate=""
   for candidate in "${candidates[@]}"; do
@@ -100,6 +116,12 @@ _jobs_source_and_run_scripts_command() {
 list() { _jobs_run_scripts_command list "$@"; }
 # m5c：m5c
 m5c() { _jobs_run_scripts_command m5c "$@"; }
+# jsplit：交互选择目标并拆成 Jobs 分卷。
+jsplit() { _jobs_run_scripts_command jsplit "$@"; }
+# jmerge：检查完整分卷组并还原原文件。
+jmerge() { _jobs_run_scripts_command jmerge "$@"; }
+# jrecord：检查录屏依赖并精确录制所选浏览器或应用窗口。
+jrecord() { _jobs_run_scripts_command jrecord "$@"; }
 # flat：flat
 flat() { _jobs_run_scripts_command flat "$@"; }
 # trs：trs
@@ -198,3 +220,5 @@ apk() { _jobs_source_and_run_scripts_command apk jobs_apk_main "$@"; }
 ipa() { _jobs_source_and_run_scripts_command ipa jobs_ipa_main "$@"; }
 # config：用 Xcode 或系统文本编辑器打开 ~/.zshrc 或指定配置文件。
 config() { _jobs_run_scripts_command config "$@"; }
+
+_jobs_initialize_entrypoints_location

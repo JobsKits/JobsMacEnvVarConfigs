@@ -31,6 +31,10 @@
 
 该脚本适合 `.command` 双击运行，也可以在终端中执行。启动后的说明展示、依赖检查和核心流程都写在脚本内部。
 
+进入具体功能的自述确认界面后，按 `←` 立即回到原来的 `list` 菜单，按回车继续，`Esc` 或 `Ctrl+C` 取消本轮。返回时不会执行该功能，也不需要再按一次回车；格式转换别名和 Flutter 函数入口同样支持。独立运行某个短命令仍沿用其原确认方式，不会额外打开菜单。
+
+隔离交互验证见[菜单返回测试](./Tests/【MacOS】ListConfirmTests.zsh/README.md)，覆盖实际方向键和真实 [**fzf**](https://github.com/junegunn/fzf) 父层重画，不执行安装、更新、清理或录屏。
+
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、运行 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```zsh
@@ -50,10 +54,13 @@ list [参数...]
 
 ```text
 文件校验：m5c
+文件拆分：jsplit
+分卷合并：jmerge
 去乱码：flat
 翻译：trs
 本地朗读：tts（tts.command）
 录制 / GIF：gif
+窗口录屏：jrecord
 iOS 模拟器：simios
 本地 Pod 自检：pods
 终端清理：clean
@@ -107,6 +114,12 @@ Flutter Doctor：check
 
 菜单优先使用 Homebrew 安装的 fzf。缺少 Homebrew 或 fzf 时，会按普通工具流程询问是否安装；无法进入 fzf 时退回文本清单。`list` 这个入口名称很通用，存在与系统或第三方命令冲突的风险。
 
+选择[窗口录屏](../jrecord.command/README.md)后，执行相邻的完整录屏包。真实入口先展示用途并体检所需依赖，再用可返回的菜单选择浏览器 / 应用窗口及配置；取消不开始录制，默认无声音，输出为不覆盖的独立 MP4。窗口按真实身份再次验证，不按菜单位置选择，也不回退到整屏录制。系统录屏权限仍须由本人在系统设置中授予。
+
+录屏配置中的 `←` 返回窗口选择；帧率／声音子菜单中的 `←` 返回配置，手动帧率输入中的 `←` 返回帧率菜单。窗口选择中的 `←` 直接回到当前 `list` 功能菜单，不取消整个菜单，也不额外要求按回车。Esc 保留取消本轮的含义。录制完成后的目录询问按 `←` 同样回到功能菜单，已经保存的文件保留且不重复录制。
+
+选择[文件拆分](../【MacOS】split.command/README.md)或[分卷合并](../【MacOS】merge.command/README.md)后，由对应脚本展示自述并等待确认，再要求手动输入或拖入目标。两个功能不接收路径参数，也不默认处理当前目录；空输入、无效路径或没有可处理文件时持续询问。拆分支持文件及第一层目录文件，合并要求至少一组完整的两卷以上分卷；最终执行菜单默认取消，可用 `←` 返回上一选择层。源文件和分卷默认保留，删除仅接受精确 `YES`。
+
 ## <span id="jobs-toc-heading-6" data-jobs-toc="v2">五、结构约定 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 运行时说明和核心流程已经写在 `list.command` 内部，不依赖同级 `README.md`。
@@ -129,9 +142,11 @@ flowchart TD
     F[执行选中的脚本或函数]
     E --> F
     G[回车返回菜单]
-    F --> G
+    F -->|普通完成| G
+    F -->|录屏返回上一级| E
     H([退出菜单])
-    G --> H
+    G --> E
+    E -->|退出| H
 ```
 
 菜单依赖处理顺序：

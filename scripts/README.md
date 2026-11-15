@@ -62,7 +62,10 @@
 | [`download.command/`](./download.command/README.md) | 以 yt-dlp 下载媒体，可使用浏览器 Cookies；已配置 API 时支持 cobalt 后端。 |
 | [`to.command/`](./to.command/README.md) | FFmpeg 视频 / 音频格式转换；格式短命令复用此入口，目标重名时保留原文件。 |
 | [`gif.command/`](./gif.command/README.md) | 录制终端或全屏，输出 GIF / MP4；支持对已有录制重新生成产物。 |
+| [`jrecord.command/`](./jrecord.command/README.md) | `jrecord`：依赖体检、自愈和原生编译后，精确选择浏览器 / 应用窗口，保存不覆盖的独立 MP4。 |
 | [`m5c.command/`](./m5c.command/README.md) | 读取两个文件的 MD5 摘要并比较，不修改输入。 |
+| [`【MacOS】split.command/`](./【MacOS】split.command/README.md) | `jsplit`：手动输入或拖入文件 / 目录，按分卷上限均摊拆分并校验，源文件默认保留。 |
+| [`【MacOS】merge.command/`](./【MacOS】merge.command/README.md) | `jmerge`：手动输入或拖入目录，校验至少两卷的完整分组后按卷号还原，分卷默认保留。 |
 | [`flat.command/`](./flat.command/README.md) | 参数或交互方式做 URL 百分号解码，支持 `--plus` 并复制结果。 |
 | [`decode.command/`](./decode.command/README.md) | 循环输入 URL 编码文本，解码后显示并复制，输入 `q` 退出。 |
 | [`cor.command/`](./cor.command/README.md) | HEX / RGB / RGBA / ARGB 互转，输出通道数值和终端色块。 |
@@ -72,6 +75,10 @@
 | [`_lib/`](./_lib/README.md) | 被入口 source 的会话、路径、Flutter 实现，以及 Git 动态网络策略。 |
 
 表中每项链接进入该功能的输入、参数、运行步骤和影响范围。短命令需要先通过[环境安装入口](../install.command/README.md)部署；直接运行源码中的命令包时，其私有库、资源和相邻依赖仍须保持完整。`entrypoints`、`runtime_init` 与 `flutter_project` 是 source 模块，不按独立程序双击运行。
+
+`jsplit` / `jmerge` 不接收路径参数；每次输入或拖入明确目标，空输入、无效路径或没有可处理文件时持续询问，`Ctrl+C` 或输入结束可停止。选择待处理对象后，最终执行菜单默认取消，选中开始并回车才处理，`←` 返回上一选择层。两项工具需要已有可用的 [**fzf**](https://formulae.brew.sh/formula/fzf)，不会自动安装依赖；分卷命名为 `原文件名@序号of总数`，已有目标不覆盖，删除源文件或分卷必须精确输入 `YES`。
+
+`jrecord` 的[完整包](./jrecord.command/README.md)使用 `jrecord.command/jrecord.command`，包含入口和 `Core/` 原生 [**Swift**](https://www.swift.org/) 源码，不依赖第三方 SwiftPM 包。默认交互选择浏览器窗口，可切换全部窗口、音频和录制配置；保存地址确认后显示可鼠标穿透的 5 秒倒计时，结束后才开始采集。取消不录制，默认无声音，现有输出不覆盖。`--doctor` 仅体检，`--prepare` 只修复依赖和编译；运行时按需补齐并复检依赖，不修改原始 `screcord` 仓库。终端短命令使用完整包转发器，不可单独复制 `.command` 到 `bin/`。
 
 ### <span id="jobs-toc-heading-3" data-jobs-toc="v2">[i.command](./i.command/i.command)</span><!-- jobs-toc:heading-end -->
 

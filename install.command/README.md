@@ -28,13 +28,17 @@
 
 ---
 
-> 环境自检函数封装在每个实际业务脚本内部；安装后的独立命令可单文件使用。此配置部署入口保留既有配置同步职责。
+> 环境自检函数封装在每个实际业务脚本内部；包含原生源码或资源的命令须保留完整功能包，短命令转发到包内入口。此配置部署入口保留既有配置同步职责。
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
 `install.command` 用于执行“install”对应的 MacOS 自动化流程。主脚本与本 `README.md` 必须保持在同一目录，运行前先阅读影响范围。
 
 配置同步会将 [codemap.command](../scripts/codemap.command/README.md) 部署到用户的 JobsMacEnv 脚本目录，同时注册 `codemap` 函数和终端命令。`codemap` 用于构建当前目录或指定目录的 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 地图；配置同步只部署命令，不隐式安装 CodeGraph 引擎。
+
+配置同步同时部署[文件拆分](../scripts/【MacOS】split.command/README.md)与[分卷合并](../scripts/【MacOS】merge.command/README.md)，注册 `jsplit` / `jmerge` 函数、独立终端命令和 `list` 菜单入口，不覆盖系统 `split`。运行两个功能时，每次手动输入或拖入目标，无效目录或没有可处理文件会持续重问；执行确认默认取消，源文件和分卷默认保留。同步入口只复制和注册工具，不自动拆分或合并文件，也不代替工具自身的依赖检查。
+
+配置同步还会完整复制[窗口录屏包](../scripts/jrecord.command/README.md)，注册 `jrecord` 函数、`list` 菜单和 `~/.local/bin/jrecord` 转发器。转发器运行时按 `JOBS_MAC_ENV_HOME_OVERRIDE`、`JOBS_MAC_ENV_HOME` 或默认用户环境目录定位包内入口，保留相邻 `Core/` 原生 [**Swift**](https://www.swift.org/) 源码，不将业务入口裸复制到 `bin/`。录屏工具首次使用时才体检、按需修复依赖及编译；环境同步本身不安装录屏依赖、不编译、不申请录屏权限，也不开始录制。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、适用场景 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -117,5 +121,9 @@ README 只描述脚本职责和通用风险，不代表已经在当前 MacOS 环
 [**Homebrew**](https://brew.sh/) 安装路径由用户选择：已有可运行安装时复用；确实需要安装时先强提示，只有精确输入大写 `YES` 才选择系统标准目录，其它输入或直接回车选择当前用户的 `.local/homebrew`。`YES` 只表示选择路径，权限与密码由官方安装器实际处理；有管理员权限也可以选用户目录。选定路径失败立即停止，不自动切换；`Ctrl+C` / 输入结束取消整个任务。
 
 **终端配色保护：** 独立运行时，在支持完整保存与恢复配色的交互终端中临时使用黑底白字及统一强调色；正常结束、失败或可捕获中断后恢复进入前的配色，不修改终端全局偏好或 Shell 启动配置。不支持完整保护、无交互终端、`NO_COLOR`、既有纯文本模式和 Sourcetree 场景不切换配色，并沿用纯文本输出约定。强制终止（如 `kill -9`）无法由脚本自身保证恢复，请使用运行时显示的独立恢复入口。
+
+配色查询每次等待约 2 秒，未收到目标答复时重新发送请求，总共最多查询 3 次；完整解析 BEL／ST 颜色帧，排除合法的迟到或重复回复。启动保存和设置核验阶段仍严格拒绝键盘数据；退出恢复阶段可以识别颜色帧之间余留的 CR／LF、CSI／SS3 方向键，避免连续回车或方向键干扰正常恢复。整次退出最多接收 64 个控制单元，跨 19 个颜色项和重发累计；未知输入、帧内按键、残缺帧、非法 RGB、冲突回复或超限都停止自动覆盖。
+
+退出时只恢复仍与本次临时设置一致的颜色，保留运行期间的其它改色。失败会指出具体原因，并保留仅适用于原终端的恢复入口。[隔离终端配色测试](./Tests/【MacOS】终端配色测试.command/README.md)覆盖 17 项基本场景和 47 项真实重入调用链的丢请求、合法按键余留、共享预算及重复／非法回复场景，共 64 项；测试不执行安装业务，也不改用户正在使用的终端。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

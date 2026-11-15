@@ -55,6 +55,18 @@
     "scripts/【MacOS】⚙️配置全局Markdown目录过滤器.command/README.md",
     "Sys/README.md",
     "scripts/_lib/README.md",
-    "zsh/README.md"
+    "zsh/README.md",
+    "scripts/【MacOS】split.command/README.md",
+    "scripts/【MacOS】merge.command/README.md",
+    "scripts/【MacOS】split.command/Tests/【MacOS】FilePartsTests.zsh/README.md",
+    "scripts/jrecord.command/README.md",
+    "scripts/jrecord.command/Core/README.md",
+    "scripts/jrecord.command/Tests/【MacOS】窗口录屏测试.command/README.md",
+    "scripts/jrecord.command/Tests/【MacOS】倒计时测试.command/README.md",
+    "scripts/jrecord.command/Tests/【MacOS】倒计时测试.command/Fixtures/README.md",
+    "install.command/Tests/【MacOS】终端配色测试.command/README.md",
+    "install.command/Tests/【MacOS】终端配色测试.command/terminal_style_pty_tests.py/README.md",
+    "scripts/list.command/Tests/【MacOS】ListConfirmTests.zsh/README.md",
+    "install.command/Tests/【MacOS】终端配色测试.command/terminal_query_retry_tests.py/README.md"
   ]
 }
