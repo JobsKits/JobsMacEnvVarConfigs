@@ -63,17 +63,17 @@ JOBS_GIT_ROUTE_PRIORITY=direct git ls-remote 'https://github.com/JobsKits/JobsGe
 jobs_git_network_strategy/
 ├── README.md            # 使用、边界与恢复说明
 ├── bin/git              # Git 命令入口，内部固定调用 /usr/bin/git
-├── rollback.command     # 恢复本次挂载和 Sourcetree Git 选择
+├── 【MacOS】rollback.command/【MacOS】rollback.command     # 恢复本次挂载和 Sourcetree Git 选择
 └── tests/
-    ├── run.zsh          # 路由与真实本地集成的统一验证入口
-    ├── routes.zsh       # 动态选路、单次执行与透传边界回归
-    ├── integration.zsh  # 真实系统 Git 元数据与本地 HTTP 集成
-    └── http_fixture.pl  # 仅监听回环地址的 Git HTTP / 代理夹具
+    ├── 【MacOS】run.zsh/【MacOS】run.zsh          # 路由与真实本地集成的统一验证入口
+    ├── 【MacOS】routes.zsh/【MacOS】routes.zsh       # 动态选路、单次执行与透传边界回归
+    ├── 【MacOS】integration.zsh/【MacOS】integration.zsh  # 真实系统 Git 元数据与本地 HTTP 集成
+    └── http_fixture.pl/http_fixture.pl  # 仅监听回环地址的 Git HTTP / 代理夹具
 ```
 
 源码位于仓库的 `scripts/_lib/`，部署后位于用户环境的 `Scripts/_lib/`。Git 的 [`http.proxy`](https://git-scm.com/docs/git-config#Documentation/git-config.txt-httpproxy) 配置用于指定代理，不负责探测或自动回退；本模块用独立命令入口完成传输前选路。入口固定执行 `/usr/bin/git`，避免经 `PATH` 再次调用自己形成递归。
 
-终端现有的中文路径修正函数仍由 `zsh/custom/git_behavior.zsh` 维护；该文件只增加网络策略入口的 `PATH` 挂载，不复制网络处理代码。Sourcetree 直接使用相同的 `bin/git`，不依赖交互式终端函数。
+终端现有的中文路径修正函数仍由 `zsh/custom/【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh` 维护；该文件只增加网络策略入口的 `PATH` 挂载，不复制网络处理代码。Sourcetree 直接使用相同的 `bin/git`，不依赖交互式终端函数。
 
 ## 三、<span id="fallback">代理回退流程与边界</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -101,10 +101,10 @@ jobs_git_network_strategy/
 
 ## 四、<span id="setup">部署与普通命令入口</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-在本仓根目录运行[配置同步入口](../../../install.command/install.command)，按入口说明完成同步；它负责把 `_lib/` 和 `git_behavior.zsh` 部署到用户环境：
+在本仓根目录运行[配置同步入口](../../../【MacOS】install.command/【MacOS】install.command)，按入口说明完成同步；它负责把 `_lib/` 和 `【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh` 部署到用户环境：
 
 ```zsh
-./install.command/install.command
+./【MacOS】install.command/【MacOS】install.command
 ```
 
 首次挂载后，重新打开终端或重新载入配置，继续直接使用普通命令：
@@ -122,7 +122,7 @@ printf '%s\n' "$HOME/.JobsMacEnv/Scripts/_lib/jobs_git_network_strategy/bin/git"
 
 首次设置 Sourcetree 的 Git 路径后，使用原有克隆、拉取和推送入口。已挂载同一路径的终端和 Sourcetree 在下一次 Git 调用时读取新版脚本；仅同步模块代码不需要重启终端或用户应用。项目远端、分支、提交和凭据保持 Git 原有管理方式。
 
-`scripts/install.command` 和 `scripts/update.command` 中的仓库拉取步骤不等同于部署：取得新版源码后，仍须运行仓库根目录的配置同步入口。已有终端的中文路径修正开关 `JOBS_GIT_QUOTEPATH_FIX` 只控制路径显示，不承担网络策略开关。
+`scripts/【MacOS】install.command` 和 `scripts/【MacOS】update.command` 中的仓库拉取步骤不等同于部署：取得新版源码后，仍须运行仓库根目录的配置同步入口。已有终端的中文路径修正开关 `JOBS_GIT_QUOTEPATH_FIX` 只控制路径显示，不承担网络策略开关。
 
 ## 五、<span id="logs">日志与备份</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
@@ -138,17 +138,17 @@ printf '%s\n' "$HOME/.JobsMacEnv/Scripts/_lib/jobs_git_network_strategy/bin/git"
 先运行只读检查，无须交互，也不会变更配置：
 
 ```zsh
-/bin/zsh "$HOME/.JobsMacEnv/Scripts/_lib/jobs_git_network_strategy/rollback.command" \
+/bin/zsh "$HOME/.JobsMacEnv/Scripts/_lib/jobs_git_network_strategy/【MacOS】rollback.command/【MacOS】rollback.command" \
   --check
 ```
 
 恢复前先正常退出 Sourcetree，避免应用退出时用缓存覆盖恢复结果；恢复入口不会自动结束正在执行的任务。执行后阅读作用范围并回车确认：
 
 ```zsh
-/bin/zsh "$HOME/.JobsMacEnv/Scripts/_lib/jobs_git_network_strategy/rollback.command"
+/bin/zsh "$HOME/.JobsMacEnv/Scripts/_lib/jobs_git_network_strategy/【MacOS】rollback.command/【MacOS】rollback.command"
 ```
 
-恢复只撤回本次写入的源码 / 运行态 `git_behavior.zsh` 挂载块，并在 Sourcetree 的 Git 路径和选择仍与本次部署值一致时，恢复这两个设置的原未设置状态；发现后续修改则保留并报告冲突。已有中文路径修正函数、其它设置、模块文件、备份和日志保留。恢复后重新打开终端和 Sourcetree。
+恢复只撤回本次写入的源码 / 运行态 `【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh` 挂载块，并在 Sourcetree 的 Git 路径和选择仍与本次部署值一致时，恢复这两个设置的原未设置状态；发现后续修改则保留并报告冲突。已有中文路径修正函数、其它设置、模块文件、备份和日志保留。恢复后重新打开终端和 Sourcetree。
 
 需要单次直接使用系统 Git 时，可显式调用原生入口；这不会修改持久设置：
 
@@ -161,23 +161,25 @@ printf '%s\n' "$HOME/.JobsMacEnv/Scripts/_lib/jobs_git_network_strategy/bin/git"
 在本模块目录执行统一验证入口；它依次运行动态路由和真实本地集成，两套都通过才返回成功：
 
 ```zsh
-/bin/zsh ./tests/run.zsh
+/bin/zsh ./tests/【MacOS】run.zsh/【MacOS】run.zsh
 ```
 
 也可以按需要单独运行两套验证：
 
 | 套件 | 范围 |
 | --- | --- |
-| `tests/routes.zsh` | 从正式 `main` 验证五类网络命令、Sourcetree 参数、默认系统代理优先、代理不可用后的直连、可选直连优先、单次执行、显式及空代理、旁路、TLS 交由原生校验、未知参数与多目标透传；外部 Git / curl 使用隔离夹具。 |
-| `tests/integration.zsh` | 使用真实系统 Git / curl，验证非仓库目录 URL 解析、clone 父仓 local 配置隔离、用户级 URL 重写、递归配置边界，以及回环 HTTP 中的 `ls-remote`、clone、fetch 和 push 传输。 |
+| `tests/【MacOS】routes.zsh/【MacOS】routes.zsh` | 从正式 `main` 验证五类网络命令、Sourcetree 参数、默认系统代理优先、代理不可用后的直连、可选直连优先、单次执行、显式及空代理、旁路、TLS 交由原生校验、未知参数与多目标透传；外部 Git / curl 使用隔离夹具。 |
+| `tests/【MacOS】integration.zsh/【MacOS】integration.zsh` | 使用真实系统 Git / curl，验证非仓库目录 URL 解析、clone 父仓 local 配置隔离、用户级 URL 重写、递归配置边界，以及回环 HTTP 中的 `ls-remote`、clone、fetch 和 push 传输。 |
 
 ```zsh
-/bin/zsh ./tests/routes.zsh
-/bin/zsh ./tests/integration.zsh
+/bin/zsh ./tests/【MacOS】routes.zsh/【MacOS】routes.zsh
+/bin/zsh ./tests/【MacOS】integration.zsh/【MacOS】integration.zsh
 ```
 
 测试使用独立的临时用户目录、临时配置和仓库；HTTP / 代理夹具仅监听回环地址，不访问公网，不修改用户 Git 或系统代理，退出时清理专属夹具。真实 push 用例校验 `receive-pack` 请求仅发生一次，并确认代理参数没有写入克隆仓库。通过隔离验证不代表真实公网仓库已完成克隆或推送，实际结果须由普通命令或 Sourcetree 输出确认。
 
 **终端配色保护：** 独立运行时，在支持完整保存与恢复配色的交互终端中临时使用黑底白字及统一强调色；正常结束、失败或可捕获中断后恢复进入前的配色，不修改终端全局偏好或 Shell 启动配置。不支持完整保护、无交互终端、`NO_COLOR`、既有纯文本模式和 Sourcetree 场景不切换配色，并沿用纯文本输出约定。强制终止（如 `kill -9`）无法由脚本自身保证恢复，请使用运行时显示的独立恢复入口。
+
+公开 `bin/git` 保持 PATH 协议，只转发至 [`bin/【MacOS】git.zsh/【MacOS】git.zsh`](<./bin/【MacOS】git.zsh/【MacOS】git.zsh>)；完整实现与独立说明同名包装。公开转发器为固定命令路径例外，不重复实现策略或接管配色。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

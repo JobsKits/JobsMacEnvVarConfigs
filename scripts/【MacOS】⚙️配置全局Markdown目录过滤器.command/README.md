@@ -24,7 +24,7 @@
 
 | 入口 | 行为 |
 | --- | --- |
-| 双击同目录的配置脚本 | 只安装或复检全局驱动，不推断或遍历父仓。 |
+| 双击同目录的配置脚本 | 先展示固定自述并回车确认，再安装或复检全局驱动；不推断或遍历父仓。 |
 | JobsGenesis 下载入口的附加提示 | 先完成代码拉取与向下递归；回车才安装并恢复该目标仓库，输入任意字符后回车跳过。 |
 | 附加配置缺依赖、缺文件或失败 | 保留已完成的拉取结果，稍后可独立运行配置。 |
 
@@ -34,10 +34,10 @@
 
 ```shell
 /bin/zsh ./【MacOS】⚙️配置全局Markdown目录过滤器.command
-node ./GlobalMarkdownToc.mjs status
-node ./GlobalMarkdownToc.mjs setup "目标仓库根目录"
-node ./GlobalMarkdownToc.mjs restore-tree "目标仓库根目录"
-node ./GlobalMarkdownToc.mjs uninstall
+node ./GlobalMarkdownToc.mjs/GlobalMarkdownToc.mjs status
+node ./GlobalMarkdownToc.mjs/GlobalMarkdownToc.mjs setup "目标仓库根目录"
+node ./GlobalMarkdownToc.mjs/GlobalMarkdownToc.mjs restore-tree "目标仓库根目录"
+node ./GlobalMarkdownToc.mjs/GlobalMarkdownToc.mjs uninstall
 ```
 
 | 命令 | 范围 |
@@ -67,7 +67,7 @@ node ./GlobalMarkdownToc.mjs uninstall
 ## 四、<span id="validation">验证与撤回</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
 ```shell
-node --test ./GlobalMarkdownToc.Tests.mjs
+node --test ./GlobalMarkdownToc.Tests.mjs/GlobalMarkdownToc.Tests.mjs
 ```
 
 测试使用隔离的 Git 全局配置与临时仓库，覆盖首次克隆、暂存生成、部分暂存保留、子模块恢复、重复安装、卸载与重装、冲突保护、复制后的独立脚本包和显式目标校验。隔离转换目录使用绝对路径环境变量 `JOBS_MARKDOWN_TOC_HOME`。下载入口的可选交互测试位于 JobsGenesis 的 `.jobs-markdown-toc/DownloadMarkdownToc.Tests.mjs`。
@@ -75,5 +75,7 @@ node --test ./GlobalMarkdownToc.Tests.mjs
 操作结果与错误显示在终端；安装恢复记录是机器副本旁的 `installation.json`。卸载不会遍历任意仓库改写文档，没有仓内驱动兜底时，现有 `[toc]` 将不再转换；需要继续编辑时重新安装。不暂存、不提交、不推送，不更改 hooks。
 
 **终端配色保护：** 独立运行时，在支持完整保存与恢复配色的交互终端中临时使用黑底白字及统一强调色；正常结束、失败或可捕获中断后恢复进入前的配色，不修改终端全局偏好或 Shell 启动配置。不支持完整保护、无交互终端、`NO_COLOR`、既有纯文本模式和 Sourcetree 场景不切换配色，并沿用纯文本输出约定。强制终止（如 `kill -9`）无法由脚本自身保证恢复，请使用运行时显示的独立恢复入口。
+
+Shell 前端写操作先确认；`status` / `--help` 只读。上层已确认的自动调用可显式传 `--confirmed`，不重复询问；取消、EOF 和非空答案停止。Node 后端保留显式模式协议，供过滤器与已确认入口调用。源码中的 Node 工具采用同名包装，部署时的固定转换文件名仍为 `MarkdownToc.mjs`，兼容现有 Git 配置。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

@@ -18,7 +18,7 @@
 
 ## 🔥 <span id="前言">前言</span>
 
-本目录保存用户 Shell 启动配置的源码模板。由[环境安装器](../install.command/README.md)部署和提示替换；查看模板不等于已经改变当前终端配置。模块实现和加载顺序见 [zsh/README.md](../zsh/README.md)。
+本目录保存用户 Shell 启动配置的源码模板。由[环境安装器](../【MacOS】install.command/README.md)部署和提示替换；查看模板不等于已经改变当前终端配置。模块实现和加载顺序见 [zsh/README.md](../zsh/README.md)。
 
 ## <span id="jobs-toc-heading-2" data-jobs-toc="v2">一、文件与功能 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -35,7 +35,7 @@
 需要部署时在本目录执行上级安装入口，并按提示决定是否替换用户配置：
 
 ```shell
-zsh '../install.command/install.command'
+zsh '../【MacOS】install.command/【MacOS】install.command'
 ```
 
 安装器有自身的依赖检查与写入范围，运行前先读其 README。模板中的工具路径必须与本机安装一致，尤其是 bash 的 Gradle / Flutter 路径。直接 source 会执行配置正文、改变当前进程的环境或目录；它不用于安装缺失的全部开发工具。部署完成后重新打开终端验证命令路由，不能以模板文件存在代替运行环境已就绪。

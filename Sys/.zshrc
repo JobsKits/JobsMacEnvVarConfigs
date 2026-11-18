@@ -9,8 +9,8 @@ jobs_source_if_exists() {
   [[ -f "$file" ]] && source "$file"
 }
 
-jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/bootstrap.zsh"
-jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/env_methods.zsh"
+jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/【MacOS】bootstrap.zsh/【MacOS】bootstrap.zsh"
+jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/【MacOS】env_methods.zsh/【MacOS】env_methods.zsh"
 jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/env.zsh"
 jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/aliases.zsh"
-jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/user_mounts.zsh"
+jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/【MacOS】user_mounts.zsh/【MacOS】user_mounts.zsh"

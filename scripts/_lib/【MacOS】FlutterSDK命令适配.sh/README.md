@@ -1,4 +1,18 @@
-# Flutter SDK命令适配
+# <span id="前言">Flutter SDK命令适配</span>
+
+![Jobs出品，必属精品](https://picsum.photos/1500/400)
+
+<!-- jobs-toc:start -->
+<!-- jobs-toc:source {"v":2,"token":"[toc]"} -->
+<details>
+<summary>📚 目录（点击展开 / 收起）</summary>
+
+暂无章节。
+
+</details>
+<!-- jobs-toc:end -->
+
+---
 
 用法：`/bin/sh 本脚本 原SDK命令 参数...`。保留原解释器、stdin与参数；FVM安装使用公共两阶段接口，普通Flutter/Dart命令先补齐所属SDK，再执行原业务一次。SDK网络设置仅作用于子进程。安装/升级Flutter cask时从Brew JSON读取真实URL，Brew继续负责原始URL和摘要校验。
 
@@ -12,3 +26,4 @@ Brew原URL尚未知时，仅对原始`brew info`元数据查询做有界获取�
 
 **终端配色保护：** 独立运行时，在支持完整保存与恢复配色的交互终端中临时使用黑底白字及统一强调色；正常结束、失败或可捕获中断后恢复进入前的配色，不修改终端全局偏好或 Shell 启动配置。不支持完整保护、无交互终端、`NO_COLOR`、既有纯文本模式和 Sourcetree 场景不切换配色，并沿用纯文本输出约定。强制终止（如 `kill -9`）无法由脚本自身保证恢复，请使用运行时显示的独立恢复入口。
 
+<a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

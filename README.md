@@ -32,85 +32,90 @@
     - [3.7 shell：用 fzf 选择并切换默认 Shell](#jobs-toc-heading-23)
     - [3.8 download \<url\>：媒体下载，yt-dlp 优先并可兜底 cobalt](#jobs-toc-heading-24)
     - [3.9 Ctrl + G：把命令行最后一个路径参数解析成真实路径](#jobs-toc-heading-25)
-    - [3.10 shell\_behavior.zsh：交互式终端默认行为](#jobs-toc-heading-26)
-    - [3.10.1 git\_behavior.zsh：Git 路径显示修正与推送网络入口挂载](#jobs-toc-heading-27)
+    - [3.10 【MacOS】shell\_behavior.zsh/【MacOS】shell\_behavior.zsh：交互式终端默认行为](#jobs-toc-heading-26)
+    - [3.10.1 【MacOS】git\_behavior.zsh/【MacOS】git\_behavior.zsh：Git 路径显示修正与推送网络入口挂载](#jobs-toc-heading-27)
     - [3.11 trs：macOS 原生翻译入口](#jobs-toc-heading-28)
     - [3.12 gif：终端 / 全屏录制并转为高质量 GIF / MP4](#jobs-toc-heading-29)
     - [3.13 simios：Xcode iOS Simulator Runtime 下载 / 补齐](#jobs-toc-heading-30)
-    - [3.14 local.zsh：Scripts 模块加载器](#jobs-toc-heading-31)
+    - [3.14 【MacOS】local.zsh/【MacOS】local.zsh：Scripts 模块加载器](#jobs-toc-heading-31)
 - [八、更新配置](#jobs-toc-heading-32)
 - [九、注意事项](#jobs-toc-heading-33)
 - [10、推荐维护方式](#jobs-toc-heading-34)
 - [十一、当前源码目录结构](#repository-layout)
 - [十二、本仓脚本流程](#repository-script-flows)
-  - [install.command](#jobs-toc-heading-37)
-  - [install.command](#jobs-toc-heading-38)
-  - [update.command](#jobs-toc-heading-39)
-  - [install\_jdk17.command](#jobs-toc-heading-40)
-  - [list.command](#jobs-toc-heading-41)
-  - [a.command](#jobs-toc-heading-42)
-  - [b.command](#jobs-toc-heading-43)
-  - [i.command](#jobs-toc-heading-44)
-  - [rb.command](#jobs-toc-heading-45)
-  - [save.command](#jobs-toc-heading-46)
-  - [x.command](#jobs-toc-heading-47)
-  - [zz.command](#jobs-toc-heading-48)
-  - [shell.command](#jobs-toc-heading-49)
-  - [d.command](#jobs-toc-heading-50)
-  - [check1.command](#jobs-toc-heading-51)
-  - [check.command](#jobs-toc-heading-52)
-  - [c.command](#jobs-toc-heading-53)
-  - [fixfvm.command](#jobs-toc-heading-54)
-  - [buildCheck.command](#jobs-toc-heading-55)
-  - [apk.command](#jobs-toc-heading-56)
-  - [ipa.command](#jobs-toc-heading-57)
-  - [config.command](#jobs-toc-heading-58)
-  - [code.command](#jobs-toc-heading-59)
-  - [codemap.command](#jobs-toc-heading-60)
-  - [clean.command](#jobs-toc-heading-61)
-  - [clr.command](#jobs-toc-heading-62)
-  - [dq.command](#jobs-toc-heading-63)
-  - [df.command](#jobs-toc-heading-64)
-  - [download.command](#jobs-toc-heading-65)
-  - [to.command](#jobs-toc-heading-66)
-  - [gif.command](#jobs-toc-heading-67)
-  - [jrecord.command](#jobs-toc-heading-68)
-  - [m5c.command](#jobs-toc-heading-69)
+  - [【MacOS】install.command](#jobs-toc-heading-37)
+  - [【MacOS】install.command](#jobs-toc-heading-38)
+  - [【MacOS】update.command](#jobs-toc-heading-39)
+  - [【MacOS】install\_jdk17.command](#jobs-toc-heading-40)
+  - [【MacOS】list.command](#jobs-toc-heading-41)
+  - [【MacOS】a.command](#jobs-toc-heading-42)
+  - [【MacOS】b.command](#jobs-toc-heading-43)
+  - [【MacOS】i.command](#jobs-toc-heading-44)
+  - [【MacOS】rb.command](#jobs-toc-heading-45)
+  - [【MacOS】save.command](#jobs-toc-heading-46)
+  - [【MacOS】x.command](#jobs-toc-heading-47)
+  - [【MacOS】zz.command](#jobs-toc-heading-48)
+  - [【MacOS】shell.command](#jobs-toc-heading-49)
+  - [【MacOS】d.command](#jobs-toc-heading-50)
+  - [【MacOS】check1.command](#jobs-toc-heading-51)
+  - [【MacOS】check.command](#jobs-toc-heading-52)
+  - [【MacOS】c.command](#jobs-toc-heading-53)
+  - [【MacOS】fixfvm.command](#jobs-toc-heading-54)
+  - [【MacOS】buildCheck.command](#jobs-toc-heading-55)
+  - [【MacOS】apk.command](#jobs-toc-heading-56)
+  - [【MacOS】ipa.command](#jobs-toc-heading-57)
+  - [【MacOS】config.command](#jobs-toc-heading-58)
+  - [【MacOS】code.command](#jobs-toc-heading-59)
+  - [【MacOS】codemap.command](#jobs-toc-heading-60)
+  - [【MacOS】clean.command](#jobs-toc-heading-61)
+  - [【MacOS】clr.command](#jobs-toc-heading-62)
+  - [【MacOS】dq.command](#jobs-toc-heading-63)
+  - [【MacOS】df.command](#jobs-toc-heading-64)
+  - [【MacOS】download.command](#jobs-toc-heading-65)
+  - [【MacOS】to.command](#jobs-toc-heading-66)
+  - [【MacOS】gif.command](#jobs-toc-heading-67)
+  - [【MacOS】jrecord.command](#jobs-toc-heading-68)
+  - [【MacOS】m5c.command](#jobs-toc-heading-69)
   - [【MacOS】split.command](#jobs-toc-heading-70)
   - [【MacOS】merge.command](#jobs-toc-heading-71)
-  - [flat.command](#jobs-toc-heading-72)
-  - [decode.command](#jobs-toc-heading-73)
-  - [cor.command](#jobs-toc-heading-74)
-  - [ts.command](#jobs-toc-heading-75)
-  - [trs.command](#jobs-toc-heading-76)
-  - [tts.command](#jobs-toc-heading-77)
-  - [simios.command](#jobs-toc-heading-78)
-  - [pods.command](#jobs-toc-heading-79)
-  - [repair\_gem\_extensions.command](#jobs-toc-heading-80)
-  - [cocoapods\_network\_tests.zsh](#jobs-toc-heading-81)
-  - [update\_integration\_test.zsh](#jobs-toc-heading-82)
-- [十三、启动提示与模块加载](#jobs-toc-heading-83)
-- [十四、命令菜单与媒体转换](#jobs-toc-heading-84)
-- [十五、clr：清空 Chrome 下载历史](#jobs-toc-heading-85)
+  - [【MacOS】flat.command](#jobs-toc-heading-72)
+  - [【MacOS】decode.command](#jobs-toc-heading-73)
+  - [【MacOS】cor.command](#jobs-toc-heading-74)
+  - [【MacOS】ts.command](#jobs-toc-heading-75)
+  - [【MacOS】trs.command](#jobs-toc-heading-76)
+  - [【MacOS】tts.command](#jobs-toc-heading-77)
+  - [【MacOS】orc.command](#jobs-toc-heading-78)
+  - [【MacOS】simios.command](#jobs-toc-heading-79)
+  - [【MacOS】pods.command](#jobs-toc-heading-80)
+  - [【MacOS】repair\_gem\_extensions.command](#jobs-toc-heading-81)
+  - [【MacOS】cocoapods\_network\_tests.zsh/【MacOS】cocoapods\_network\_tests.zsh](#jobs-toc-heading-82)
+  - [【MacOS】update\_integration\_test.zsh/【MacOS】update\_integration\_test.zsh](#jobs-toc-heading-83)
+- [十三、启动提示与模块加载](#jobs-toc-heading-84)
+- [十四、命令菜单与媒体转换](#jobs-toc-heading-85)
+- [十五、clr：清空 Chrome 下载历史](#jobs-toc-heading-86)
+- [十六、分项安装与卸载](#selective-environment-manager)
+  - [【MacOS】环境管理后端.command](#jobs-toc-heading-88)
+  - [【MacOS】卸载终端环境.command](#jobs-toc-heading-89)
 
 </details>
 <!-- jobs-toc:end -->
 
-[当前源码目录结构](#repository-layout) · [本仓脚本流程](#repository-script-flows)
+[当前源码目录结构](#repository-layout) · [本仓脚本流程](#repository-script-flows) · [分项安装与卸载](#selective-environment-manager)
 
 ## <span id="jobs-toc-heading-1" data-jobs-toc="v2">🔥 <font id=前言>前言</font></span><!-- jobs-toc:heading-end -->
 
 - 这是一个面向 **MacOS** 的个人开发环境配置同步项目。
-- 它把零散堆在 `~/.zshrc`、`~/.bash_profile` 里的环境变量、PATH、别名和个人命令拆分成模块，并通过 `install.command` 同步到用户目录 `~/.JobsMacEnv`。
+- 它把零散堆在 `~/.zshrc`、`~/.bash_profile` 里的环境变量、PATH、别名和个人命令拆分成模块，并通过 `【MacOS】install.command` 同步到用户目录 `~/.JobsMacEnv`。
 
 | 功能类别 | 具体能力与入口 |
 | --- | --- |
-| 环境部署与工具维护 | [环境同步](./install.command/README.md)部署配置和短命令；[install](./scripts/install.command/README.md)多选安装依赖；[update](./scripts/update.command/README.md)按项更新或无人值守维护 |
+| 环境部署与工具维护 | [环境同步](./【MacOS】install.command/README.md)部署配置和短命令；[install](./scripts/【MacOS】install.command/README.md)多选安装依赖；[update](./scripts/【MacOS】update.command/README.md)无参数默认自动维护；[桌面右键独立入口](../../OS@Extension/MacOS@Extension/JobsEnvironmentUpdater/README.md)遵循同一低打扰约定，最多启动阶段系统密码 |
+| 分项安装与反安装 | [图形管理面板](./安装面板/README.md)勾选配置和命令；[原生后端](./【MacOS】环境管理后端.command/README.md)按收据部署与恢复；[终端多选卸载](./【MacOS】卸载终端环境.command/README.md)保留终端操作方式 |
 | 配置与会话 | `a` / `b` / `config` 打开配置，`save` 重载，`rb` 重启 Shell，`shell` 选择登录 Shell，`list` 搜索并执行功能 |
-| Flutter / iOS 工程 | 项目目录选择、FVM 路由与诊断、JDK 17、构建前检查、APK / iOS 构建、模拟器运行时、本地 Pod 自检、Gem 原生扩展检查与修复 |
+| Flutter / iOS 工程 | [frun](./scripts/【MacOS】frun.command/README.md) 进入备战状态，输入或拖入 Dart main 独立运行；项目目录选择、FVM 路由与诊断、JDK 17、构建前检查、APK / iOS 构建、模拟器运行时、本地 Pod 自检、Gem 原生扩展检查与修复 |
 | 文件与本机处理 | `zz` 解析替身与软链接，`x` 授权并执行文件，`m5c` 比较摘要，[jsplit](./scripts/【MacOS】split.command/README.md) 拆分文件，[jmerge](./scripts/【MacOS】merge.command/README.md) 校验分卷并还原，`dq` 处理所选目标隔离标记，`clean` 清理历史与约定的本机缓存 |
-| 媒体 | `download` 下载，`to` 及格式短命令转换，`gif` 录制终端 / 屏幕并生成媒体，[jrecord](./scripts/jrecord.command/README.md) 精确录制浏览器 / 应用窗口 |
-| 文本与语音 | `flat` / `decode` URL 解码，`cor` 颜色互转及色块，`ts` 时间戳与时区，`trs` 系统翻译，`tts` 本地语音引擎选择、合成与播放 |
+| 媒体 | `download` 下载，`to` 及格式短命令转换，`gif` 录制终端 / 屏幕并生成媒体，[jrecord](./scripts/【MacOS】jrecord.command/README.md) 精确录制浏览器 / 应用窗口 |
+| 文本与语音 | `flat` / `decode` URL 解码，`cor` 颜色互转及色块，`ts` 时间戳与时区，`trs` 系统翻译，`tts` 本地语音引擎选择、合成与播放，[orc](./scripts/【MacOS】orc.command/README.md) 离线 OCR，命令不区分大小写 |
 | 目录共享与浏览器 | `df` 使用 dufs + Caddy 临时共享目录；`clr` 通过本地 Chrome 扩展清空下载记录并保留下载文件 |
 | 开发索引与文档 | `codemap` 构建代码地图；独立 Markdown 过滤器维护本地目录标签与远端折叠目录 |
 
@@ -123,15 +128,21 @@
 - 统一管理 **Java**、**Android**、**Flutter**、**Node**、**Rust**、**Python**、**Ruby**、**Go** 等开发环境入口。
 - 让系统级 `~/.zshrc` 保持轻量，只负责加载 `~/.JobsMacEnv`。
 - 支持本机私有配置和公共配置分离。
-- `codemap`：为当前目录或手工输入、拖入的一个或多个目录构建 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图，详见 [使用说明](./scripts/codemap.command/README.md)。配置同步会注册此命令；引擎由独立安装器安装。
+- `frun`：新终端输入 `frun`，再输入或拖入一个含 `main` 的 `.dart` 并回车，自动切换到所属 Flutter 工程运行该目标；结束后继续等待下一份源码。支持 `frun -d chrome 文件.dart`、`--dry-run` 和 Flutter 参数透传，详见[独立运行说明](./scripts/【MacOS】frun.command/README.md)。
+- `codemap`：为当前目录或手工输入、拖入的一个或多个目录构建 [**CodeGraph**](https://github.com/colbymchenry/codegraph) 代码地图，详见 [使用说明](./scripts/【MacOS】codemap.command/README.md)。配置同步会注册此命令；引擎由独立安装器安装。
+- `orc`：通过 [**Indra OCR**](https://pypi.org/project/indra-ocr/) 识别图片和 PDF；`ORC`、`Orc` 等全部大小写组合等效。首次实际使用按需安装独立 Python 环境及依赖，模型首次获取后可离线识别，详见 [OCR 使用说明](./scripts/【MacOS】orc.command/README.md)。
 - [全局 Markdown 目录过滤器](./scripts/【MacOS】⚙️配置全局Markdown目录过滤器.command/README.md)：每台电脑一次，统一配置本地 `[toc]` 与暂存 / 远端折叠目录的双向转换。功能、入口、测试和转换副本均在本仓脚本包中；环境同步只复制脚本包，不自动写入 Git 配置。JobsGenesis 下载入口先完成递归拉取，再单独询问：回车才安装，输入任意字符后回车跳过；附加配置失败不影响拉取结果。
 
 ## <span id="jobs-toc-heading-3" data-jobs-toc="v2">二、目录结构 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 ```text
 .
-├── install.command/
-│   ├── install.command             # 主安装 / 同步脚本
+├── 【MacOS】🌍环境配置管理.app       # 分项安装与卸载图形面板
+├── 安装面板/                       # 面板源码、构建入口与资源
+├── 【MacOS】环境管理后端.command/   # 分项安装、收据与安全恢复
+├── 【MacOS】卸载终端环境.command/   # fzf 多选卸载入口
+├── 【MacOS】install.command/
+│   ├── 【MacOS】install.command             # 主安装 / 同步脚本
 │   └── README.md                   # 安装入口说明
 ├── sync_env.txt                    # 声明式环境配置
 ├── icon.png                        # 项目图标
@@ -144,27 +155,30 @@
 │   ├── .bashrc
 │   └── .bash_profile
 ├── Scripts/
-│   ├── install_jdk17.command/
-│   │   ├── install_jdk17.command   # JDK 17 安装脚本，保持原版脚本位置
+│   ├── 【MacOS】install_jdk17.command/
+│   │   ├── 【MacOS】install_jdk17.command   # JDK 17 安装脚本，保持原版脚本位置
 │   │   └── README.md               # 对应自述与流程图
-│   ├── trs.command/
-│   │   ├── trs.command             # macOS 原生翻译入口脚本
+│   ├── 【MacOS】trs.command/
+│   │   ├── 【MacOS】trs.command             # macOS 原生翻译入口脚本
 │   │   └── README.md
-│   ├── tts.command/
-│   │   ├── tts.command # Supertonic 本地 TTS 朗读入口
+│   ├── 【MacOS】tts.command/
+│   │   ├── 【MacOS】tts.command # Supertonic 本地 TTS 朗读入口
 │   │   └── README.md
-│   ├── gif.command/
-│   │   ├── gif.command             # 终端 / 全屏录制并转 GIF 脚本
+│   ├── 【MacOS】orc.command/
+│   │   ├── 【MacOS】orc.command             # Indra OCR 入口，命令不区分大小写
 │   │   └── README.md
-│   ├── simios.command/
-│   │   ├── simios.command          # Xcode iOS Simulator Runtime 下载 / 补齐脚本
+│   ├── 【MacOS】gif.command/
+│   │   ├── 【MacOS】gif.command             # 终端 / 全屏录制并转 GIF 脚本
 │   │   └── README.md
-│   ├── list.command/
-│   │   ├── list.command            # fzf 功能菜单总入口
-│   ├── code.command/
-│   │   ├── code.command            # VS Code 命令行入口包装脚本
-│   ├── codemap.command/
-│   │   ├── codemap.command         # 当前目录或指定目录的 .codegraph 构建入口
+│   ├── 【MacOS】simios.command/
+│   │   ├── 【MacOS】simios.command          # Xcode iOS Simulator Runtime 下载 / 补齐脚本
+│   │   └── README.md
+│   ├── 【MacOS】list.command/
+│   │   ├── 【MacOS】list.command            # fzf 功能菜单总入口
+│   ├── 【MacOS】code.command/
+│   │   ├── 【MacOS】code.command            # VS Code 命令行入口包装脚本
+│   ├── 【MacOS】codemap.command/
+│   │   ├── 【MacOS】codemap.command         # 当前目录或指定目录的 .codegraph 构建入口
 │   │   └── README.md
 │   ├── 【MacOS】⚙️配置全局Markdown目录过滤器.command/
 │   │   ├── 【MacOS】⚙️配置全局Markdown目录过滤器.command
@@ -172,11 +186,11 @@
 │   │   ├── MarkdownToc.mjs         # 独立转换副本，不依赖源仓库位置
 │   │   ├── GlobalMarkdownToc.Tests.mjs
 │   │   └── README.md
-│   ├── pods.command/
-│   │   ├── pods.command            # 本地 CocoaPods Pod 编译 / podspec lint 自检入口
+│   ├── 【MacOS】pods.command/
+│   │   ├── 【MacOS】pods.command            # 本地 CocoaPods Pod 编译 / podspec lint 自检入口
 │   │   └── README.md
-│   ├── m5c.command/
-│   │   ├── m5c.command             # MD5 文件一致性比较工具
+│   ├── 【MacOS】m5c.command/
+│   │   ├── 【MacOS】m5c.command             # MD5 文件一致性比较工具
 │   │   └── README.md
 │   ├── 【MacOS】split.command/
 │   │   ├── 【MacOS】split.command  # jsplit 文件拆分入口
@@ -184,30 +198,30 @@
 │   ├── 【MacOS】merge.command/
 │   │   ├── 【MacOS】merge.command  # jmerge 分卷合并入口
 │   │   └── README.md
-│   ├── jrecord.command/
-│   │   ├── jrecord.command  # jrecord：依赖体检、可返回的窗口选择及录制
+│   ├── 【MacOS】jrecord.command/
+│   │   ├── 【MacOS】jrecord.command  # jrecord：依赖体检、可返回的窗口选择及录制
 │   │   ├── Core/                    # 随包提供的原生 Swift 录屏内核源码
 │   │   └── README.md
-│   ├── flat.command/
-│   │   ├── flat.command  # URL 编码去乱码 / 解码工具
+│   ├── 【MacOS】flat.command/
+│   │   ├── 【MacOS】flat.command  # URL 编码去乱码 / 解码工具
 │   │   └── README.md
-│   ├── dq.command/
-│   │   ├── dq.command              # 修复新装 App 打不开 / 废纸篓提示
+│   ├── 【MacOS】dq.command/
+│   │   ├── 【MacOS】dq.command              # 修复新装 App 打不开 / 废纸篓提示
 │   │   └── README.md
-│   ├── df.command/
-│   │   ├── df.command             # dufs + Caddy 局域网目录共享入口
+│   ├── 【MacOS】df.command/
+│   │   ├── 【MacOS】df.command             # dufs + Caddy 局域网目录共享入口
 │   │   └── README.md
 │   └── *.command/                  # 其余模块均按“脚本全名文件夹 + 脚本 + README”管理
 └── zsh/
-    ├── bootstrap.zsh               # 启动层：交互式环境、Oh My Zsh、Homebrew
-    ├── env_methods.zsh             # 环境变量 / PATH 工具方法
+    ├── 【MacOS】bootstrap.zsh/【MacOS】bootstrap.zsh               # 启动层：交互式环境、Oh My Zsh、Homebrew
+    ├── 【MacOS】env_methods.zsh/【MacOS】env_methods.zsh             # 环境变量 / PATH 工具方法
     ├── aliases.zsh                 # 自动生成的别名文件
-    ├── user_mounts.zsh             # 自定义模块挂载入口
+    ├── 【MacOS】user_mounts.zsh/【MacOS】user_mounts.zsh             # 自定义模块挂载入口
     └── custom/
-        ├── shell_behavior.zsh      # 交互式终端行为：默认 cd 桌面、clean 清屏清历史
-        ├── git_behavior.zsh        # Git 路径显示修正与推送网络入口挂载
-        ├── path_drag_resolver.zsh  # macOS 拖入路径解析
-        └── local.zsh               # Scripts 模块加载器
+        ├── 【MacOS】shell_behavior.zsh/【MacOS】shell_behavior.zsh      # 交互式终端行为：默认 cd 桌面、clean 清屏清历史
+        ├── 【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh        # Git 路径显示修正与推送网络入口挂载
+        ├── 【MacOS】path_drag_resolver.zsh/【MacOS】path_drag_resolver.zsh  # macOS 拖入路径解析
+        └── 【MacOS】local.zsh/【MacOS】local.zsh               # Scripts 模块加载器
 ```
 
 安装后会同步到：
@@ -215,22 +229,23 @@
 ```text
 ~/.JobsMacEnv
 ├── .zshrc
-├── install.command
+├── 【MacOS】install.command
 ├── sync_env.txt
 ├── README.md
 ├── Scripts/
-│   ├── install_jdk17.command/install_jdk17.command
-│   ├── trs.command/trs.command
-│   ├── tts.command/tts.command
-│   ├── gif.command/gif.command
-│   ├── simios.command/simios.command
-│   ├── list.command/list.command
-│   ├── m5c.command/m5c.command
+│   ├── 【MacOS】install_jdk17.command/【MacOS】install_jdk17.command
+│   ├── 【MacOS】trs.command/【MacOS】trs.command
+│   ├── 【MacOS】tts.command/【MacOS】tts.command
+│   ├── 【MacOS】orc.command/【MacOS】orc.command
+│   ├── 【MacOS】gif.command/【MacOS】gif.command
+│   ├── 【MacOS】simios.command/【MacOS】simios.command
+│   ├── 【MacOS】list.command/【MacOS】list.command
+│   ├── 【MacOS】m5c.command/【MacOS】m5c.command
 │   ├── 【MacOS】split.command/【MacOS】split.command
 │   ├── 【MacOS】merge.command/【MacOS】merge.command
-│   ├── flat.command/flat.command
-│   ├── dq.command/dq.command
-│   ├── df.command/df.command
+│   ├── 【MacOS】flat.command/【MacOS】flat.command
+│   ├── 【MacOS】dq.command/【MacOS】dq.command
+│   ├── 【MacOS】df.command/【MacOS】df.command
 │   └── *.command/*.command
 └── zsh/
 ```
@@ -240,11 +255,11 @@
 进入项目目录后执行：
 
 ```bash
-chmod +x install.command/install.command
-./install.command/install.command
+chmod +x 【MacOS】install.command/【MacOS】install.command
+./【MacOS】install.command/【MacOS】install.command
 ```
 
-也可以在 **Finder** 中双击 `install.command` 执行。
+也可以在 **Finder** 中双击 `【MacOS】install.command` 执行。
 
 安装过程中会询问：
 
@@ -255,7 +270,7 @@ chmod +x install.command/install.command
 5. `m5c` 可比较两个文件的 MD5，判断文件字节内容是否一致
 6. `flat` 可对 URL 编码文本执行去乱码 / 解码，并自动复制结果到剪贴板
 7. `trs` 首次使用时会对 `fzf` / `translate-cli` 这类必需依赖执行补齐流程
-8. `tts` 会调用 `tts.command`，输入文本后通过本地 Supertonic 服务生成并播放语音
+8. `tts` 会调用 `【MacOS】tts.command`，输入文本后通过本地 Supertonic 服务生成并播放语音
 9. `gif` 首次使用时会检测 Homebrew / asciinema / agg / ffmpeg；启动时按回车默认录制当前终端，进入设置菜单可选择全屏录制
 9. `simios` 会先检测完整 Xcode / xcode-select / xcodebuild / Xcode license / 首次启动组件，再执行 iOS Simulator Runtime 下载
 
@@ -367,7 +382,7 @@ gl=git pull
 个人终端函数和本机专属内容统一放这里：
 
 ```text
-zsh/custom/local.zsh
+zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
 适合放：
@@ -384,7 +399,7 @@ zsh/custom/local.zsh
 export JOBS_ALIAS_DRAG_AUTO_RESOLVE=true
 ```
 
-个人命令按功能拆到 `Scripts/<脚本全名>/<脚本全名>`，每个脚本文件夹都带独立 `README.md` 和 Mermaid 流程图，`local.zsh` 只负责加载这些模块。
+个人命令按功能拆到 `Scripts/<脚本全名>/<脚本全名>`，每个脚本文件夹都带独立 `README.md` 和 Mermaid 流程图，`【MacOS】local.zsh/【MacOS】local.zsh` 只负责加载这些模块。
 
 ## <span id="jobs-toc-heading-9" data-jobs-toc="v2">六、已支持的环境 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
@@ -400,6 +415,7 @@ export JOBS_ALIAS_DRAG_AUTO_RESOLVE=true
 | Go | 支持 GOPATH 和 Go bin 路径 |
 | Homebrew | 自动兼容 Apple Silicon 和 Intel 路径 |
 | trs | macOS 原生翻译入口，中文固定为一端，fzf 选择对方语言 |
+| orc / ORC | Indra OCR 图片／PDF 识别入口；工具及模型就绪后可离线，支持全部大小写组合 |
 | gif | 终端 / 全屏录制入口，基于 asciinema + agg / screencapture + ffmpeg 生成高质量 GIF / MP4 |
 | jrecord | 原生窗口录屏入口，默认只列浏览器；精确验证所选窗口身份，直接保存独立 MP4，不需框选区域 |
 | simios | 检测完整 Xcode 环境并下载 / 补齐 iOS Simulator Runtime |
@@ -420,18 +436,18 @@ export JOBS_ALIAS_DRAG_AUTO_RESOLVE=true
 ```zsh
 export JOBS_MAC_ENV_HOME="$HOME/.JobsMacEnv"
 
-jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/bootstrap.zsh"
-jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/env_methods.zsh"
+jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/【MacOS】bootstrap.zsh/【MacOS】bootstrap.zsh"
+jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/【MacOS】env_methods.zsh/【MacOS】env_methods.zsh"
 jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/env.zsh"
 jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/aliases.zsh"
-jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/user_mounts.zsh"
+jobs_source_if_exists "$JOBS_MAC_ENV_HOME/zsh/【MacOS】user_mounts.zsh/【MacOS】user_mounts.zsh"
 ```
 
 核心配置都在 `~/.JobsMacEnv` 下维护。
 
 ### <span id="jobs-toc-heading-12" data-jobs-toc="v2">2、macOS 路径拖入解析 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-`path_drag_resolver.zsh` 用来处理 Finder 拖入终端的路径。
+`【MacOS】path_drag_resolver.zsh/【MacOS】path_drag_resolver.zsh` 用来处理 Finder 拖入终端的路径。
 
 默认快捷键：
 
@@ -451,26 +467,26 @@ Ctrl + G
 这些命令不是系统自带命令，而是本项目挂载到 zsh 里的个人终端能力。加载顺序在：
 
 ```zsh
-zsh/user_mounts.zsh
+zsh/【MacOS】user_mounts.zsh/【MacOS】user_mounts.zsh
 ```
 
 默认顺序是：
 
 ```zsh
-shell_behavior.zsh
-git_behavior.zsh
-path_drag_resolver.zsh
-local.zsh
+【MacOS】shell_behavior.zsh/【MacOS】shell_behavior.zsh
+【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh
+【MacOS】path_drag_resolver.zsh/【MacOS】path_drag_resolver.zsh
+【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
-也就是说，`shell_behavior.zsh` 放终端默认行为，`git_behavior.zsh` 放 Git 中文路径 / emoji 路径显示修正和推送网络入口挂载，`path_drag_resolver.zsh` 放路径拖入解析，`local.zsh` 只加载 `Scripts/<脚本全名>/<脚本全名>` 模块，并兼容旧版平铺结构 `Scripts/*.command`。
+也就是说，`【MacOS】shell_behavior.zsh/【MacOS】shell_behavior.zsh` 放终端默认行为，`【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh` 放 Git 中文路径 / emoji 路径显示修正和推送网络入口挂载，`【MacOS】path_drag_resolver.zsh/【MacOS】path_drag_resolver.zsh` 放路径拖入解析，`【MacOS】local.zsh/【MacOS】local.zsh` 只加载 `Scripts/<脚本全名>/<脚本全名>` 模块，并兼容旧版平铺结构 `Scripts/*.command`。
 
 #### <span id="jobs-toc-heading-14" data-jobs-toc="v2">3.0 `list`：功能菜单总入口 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 来源文件：
 
 ```text
-Scripts/list.command/list.command
+Scripts/【MacOS】list.command/【MacOS】list.command
 ```
 
 用法：
@@ -498,7 +514,7 @@ list
 来源文件：
 
 ```text
-Scripts/m5c.command/m5c.command
+Scripts/【MacOS】m5c.command/【MacOS】m5c.command
 ```
 
 用法：
@@ -525,7 +541,7 @@ m5c
 来源文件：
 
 ```text
-Scripts/flat.command/flat.command
+Scripts/【MacOS】flat.command/【MacOS】flat.command
 ```
 
 用法：
@@ -554,7 +570,7 @@ flat --plus "hello+world%21"
 来源文件：
 
 ```text
-scripts/clean.command/clean.command
+scripts/【MacOS】clean.command/【MacOS】clean.command
 ```
 
 用法：
@@ -595,7 +611,7 @@ clean
 来源文件：
 
 ```text
-Scripts/clr.command/clr.command
+Scripts/【MacOS】clr.command/【MacOS】clr.command
 ```
 
 用法：
@@ -634,7 +650,7 @@ clr --ui-only
 来源文件：
 
 ```text
-Scripts/dq.command/dq.command
+Scripts/【MacOS】dq.command/【MacOS】dq.command
 ```
 
 用法：
@@ -659,7 +675,7 @@ dq --dry-run ~/Downloads/Otty.dmg
 来源文件：
 
 ```text
-zsh/custom/local.zsh
+zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
 用法：
@@ -694,7 +710,7 @@ zz ~/Downloads/demo.command
 来源文件：
 
 ```text
-zsh/custom/local.zsh
+zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
 用法：
@@ -714,7 +730,7 @@ x <脚本文件>
 示例：
 
 ```zsh
-x ./install.command
+x ./【MacOS】install.command
 x ~/Downloads/test.sh
 ```
 
@@ -725,7 +741,7 @@ x ~/Downloads/test.sh
 来源文件：
 
 ```text
-zsh/custom/local.zsh
+zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
 用法：
@@ -757,7 +773,7 @@ cor '0x80D2D4DE'
 来源文件：
 
 ```text
-zsh/custom/local.zsh
+zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
 用法：
@@ -793,7 +809,7 @@ brew install fzf
 来源文件：
 
 ```text
-scripts/download.command/download.command
+scripts/【MacOS】download.command/【MacOS】download.command
 ```
 
 用法：
@@ -837,7 +853,7 @@ export JOBS_DOWNLOAD_COBALT_KEY="可选 Api-Key"
 来源文件：
 
 ```text
-zsh/custom/path_drag_resolver.zsh
+zsh/custom/【MacOS】path_drag_resolver.zsh/【MacOS】path_drag_resolver.zsh
 ```
 
 默认快捷键：
@@ -875,19 +891,19 @@ export JOBS_ALIAS_DRAG_AUTO_RESOLVE=true
 - `JOBS_ALIAS_DRAG_AUTO_RESOLVE=true` 后，粘贴 / 拖入单个有效路径时会尝试自动转成真实路径。
 - 不想自动解析时，不设置 `JOBS_ALIAS_DRAG_AUTO_RESOLVE`，只保留 `Ctrl + G` 手动触发即可。
 
-#### <span id="jobs-toc-heading-26" data-jobs-toc="v2">3.10 `shell_behavior.zsh`：交互式终端默认行为 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+#### <span id="jobs-toc-heading-26" data-jobs-toc="v2">3.10 `【MacOS】shell_behavior.zsh/【MacOS】shell_behavior.zsh`：交互式终端默认行为 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 来源文件：
 
 ```text
-zsh/custom/shell_behavior.zsh
+zsh/custom/【MacOS】shell_behavior.zsh/【MacOS】shell_behavior.zsh
 ```
 
 当前默认行为：
 
 - 只有交互式 zsh 才执行这里面的逻辑。
 - 打开新终端时，如果存在 `~/Desktop`，默认进入桌面。
-- `clean` 由 `scripts/entrypoints.command/entrypoints.command` 注册，真实实现位于 `scripts/clean.command/clean.command`，负责清历史、清用户缓存、执行 `brew cleanup` 和 Command+K 式清屏。
+- `clean` 由 `scripts/【MacOS】entrypoints.command/【MacOS】entrypoints.command` 注册，真实实现位于 `scripts/【MacOS】clean.command/【MacOS】clean.command`，负责清历史、清用户缓存、执行 `brew cleanup` 和 Command+K 式清屏。
 
 如果你不想打开终端默认进入桌面，直接注释这一段即可：
 
@@ -897,12 +913,12 @@ if [[ -o interactive ]] && [[ -d "$HOME/Desktop" ]]; then
 fi
 ```
 
-#### <span id="jobs-toc-heading-27" data-jobs-toc="v2">3.10.1 `git_behavior.zsh`：Git 路径显示修正与推送网络入口挂载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+#### <span id="jobs-toc-heading-27" data-jobs-toc="v2">3.10.1 `【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh`：Git 路径显示修正与推送网络入口挂载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 来源文件：
 
 ```text
-zsh/custom/git_behavior.zsh
+zsh/custom/【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh
 ```
 
 当前默认行为：
@@ -918,7 +934,7 @@ export JOBS_GIT_QUOTEPATH_FIX=false
 source ~/.zshrc
 ```
 
-网络策略由 [`jobs_git_network_strategy`](./scripts/_lib/jobs_git_network_strategy/README.md) 独立模块处理：`git_behavior.zsh` 把运行目录中的 `bin/` 加到 `PATH`，原有 `git` 函数继续负责中文路径修正。终端的 HTTP / HTTPS `clone`、`fetch`、`pull`、`ls-remote`、`push` 与 [**Sourcetree**](https://www.sourcetreeapp.com/) 对应操作使用同一入口；Sourcetree 须选择系统 Git，并指向该模块的 `bin/git`。
+网络策略由 [`jobs_git_network_strategy`](./scripts/_lib/jobs_git_network_strategy/README.md) 独立模块处理：`【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh` 把运行目录中的 `bin/` 加到 `PATH`，原有 `git` 函数继续负责中文路径修正。终端的 HTTP / HTTPS `clone`、`fetch`、`pull`、`ls-remote`、`push` 与 [**Sourcetree**](https://www.sourcetreeapp.com/) 对应操作使用同一入口；Sourcetree 须选择系统 Git，并指向该模块的 `bin/git`。
 
 网络操作前动态读取当前 macOS HTTPS / HTTP / SOCKS 代理，默认优先验证并使用可达的系统代理；VPN 关闭或代理候选不可用时，再短时探测正常链路，两路均不可用则明确报错。选路后，原始 Git 业务命令只执行一次；代理只注入该次子进程，不保存全局 `http.proxy`，也不依赖 VPN 品牌或固定端口。TUN 接管由正常网络路径承接；可用 `JOBS_GIT_ROUTE_PRIORITY=direct` 改为直连优先。显式代理、空代理、旁路、认证 / 权限 / 证书错误及未支持的调用形式保持原行为；详细覆盖边界和验证入口见模块说明。
 
@@ -927,14 +943,14 @@ source ~/.zshrc
 来源文件：
 
 ```text
-Scripts/trs.command/trs.command
-zsh/custom/local.zsh
+Scripts/【MacOS】trs.command/【MacOS】trs.command
+zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
 安装后入口：
 
 ```text
-~/.JobsMacEnv/Scripts/trs.command/trs.command
+~/.JobsMacEnv/Scripts/【MacOS】trs.command/【MacOS】trs.command
 ~/.local/bin/trs
 ```
 
@@ -1006,14 +1022,14 @@ translate-cli
 来源文件：
 
 ```text
-Scripts/gif.command/gif.command
-zsh/custom/local.zsh
+Scripts/【MacOS】gif.command/【MacOS】gif.command
+zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
 安装后入口：
 
 ```text
-~/.JobsMacEnv/Scripts/gif.command/gif.command
+~/.JobsMacEnv/Scripts/【MacOS】gif.command/【MacOS】gif.command
 ~/.local/bin/gif
 ```
 
@@ -1092,13 +1108,13 @@ Ctrl-C
 脚本位置：
 
 ```bash
-Scripts/simios.command/simios.command
+Scripts/【MacOS】simios.command/【MacOS】simios.command
 ```
 
 安装后入口：
 
 ```bash
-~/.JobsMacEnv/Scripts/simios.command/simios.command
+~/.JobsMacEnv/Scripts/【MacOS】simios.command/【MacOS】simios.command
 ~/.local/bin/simios
 ```
 
@@ -1116,12 +1132,12 @@ xcodebuild -downloadPlatform iOS -verbose
 
 交互规则：普通更新 / 升级动作默认回车跳过，输入任意字符后回车才执行；会影响 `xcodebuild` 的必要支援项会单独提示原因。
 
-#### <span id="jobs-toc-heading-31" data-jobs-toc="v2">3.14 `local.zsh`：Scripts 模块加载器 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+#### <span id="jobs-toc-heading-31" data-jobs-toc="v2">3.14 `【MacOS】local.zsh/【MacOS】local.zsh`：Scripts 模块加载器 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 来源文件：
 
 ```text
-zsh/custom/local.zsh
+zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh
 ```
 
 这个文件不再堆业务函数，只负责按顺序加载 `Scripts/<脚本全名>/<脚本全名>`。真正的个人终端函数、项目命令和本机路径配置已经按功能拆到 `Scripts` 目录，每个脚本目录内都有对应 `README.md`。
@@ -1152,6 +1168,7 @@ zsh/custom/local.zsh
 | `decode` | URL Decode 交互式解码，并自动复制结果到剪贴板 |
 | `ts` | 交互式时间戳转换；空回车会继续提示，Esc/Ctrl-C/Ctrl-D 退出；输出年、月、日、时、分、秒、周几、时区；可用 fzf 选择其他时区 |
 | `trs` | macOS 原生翻译入口，默认其他语言 → 中文，可切换中文 → 对方语言 |
+| `orc` / `ORC` | 图片／PDF 的本地 OCR；无参数可输入或拖入路径，支持全部大小写组合，依赖和模型首次按需准备 |
 | `gif` | 终端 / 全屏录制并转为高质量 GIF / MP4，按回车默认录制当前终端，进入设置菜单可选择全屏录制 |
 | `jrecord` | 依赖体检及条件式自愈，选择浏览器 / 应用窗口后录制独立 MP4；默认无声音，不覆盖已有输出 |
 | `simios` | Xcode 升级后检测并下载 / 补齐 iOS Simulator Runtime |
@@ -1178,7 +1195,7 @@ export JOBS_DART_CLI_COMPLETION_FILE="$HOME/.dart-cli-completion/zsh-config.zsh"
 修改项目里的配置后，重新执行：
 
 ```bash
-./install.command/install.command
+./【MacOS】install.command/【MacOS】install.command
 ```
 
 脚本会把配置同步到：
@@ -1195,7 +1212,7 @@ export JOBS_DART_CLI_COMPLETION_FILE="$HOME/.dart-cli-completion/zsh-config.zsh"
 - 自动安装 JDK 17 依赖 [**Homebrew**](https://brew.sh/)。
 - 替换 `~/.zshrc` 前会自动备份，但仍建议先确认当前配置没有重要未迁移内容。
 - `env.zsh` 和 `aliases.zsh` 是生成文件，不建议直接长期手改。
-- `zsh/custom/local.zsh` 是 Scripts 模块加载器；项目目录由显式参数、环境配置或当前工程发现，不需要修改 `Scripts/_lib/jobs_flutter_lib.zsh` 中的机器路径；`flutter` 函数由 `Scripts/flutter_project.command/flutter_project.command` 加载。
+- `zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh` 是 Scripts 模块加载器；项目目录由显式参数、环境配置或当前工程发现，不需要修改 `Scripts/_lib/【MacOS】jobs_flutter_lib.zsh/【MacOS】jobs_flutter_lib.zsh` 中的机器路径；`flutter` 函数由 `Scripts/【MacOS】flutter_project.command/【MacOS】flutter_project.command` 加载。
 - `USE_FVM=true` 时，`env.zsh` 会在每次开启交互式 shell 时自动加载上面的 Flutter 模块：`flutter` / `dart` 按当前项目 `.fvmrc` 解析 SDK 版本；不在 FVM 项目内则回退到 `FLUTTER_CANDIDATES` 里第一个存在的目录（通常是 `~/fvm/default/bin`），再回退到 PATH 上的真实 `flutter`。FVM 项目内不需要再手动 `fvm flutter ...`。
 - `trs` 依赖 macOS 原生翻译能力；系统版本、语言资源和语言对支持情况会直接影响可用性。
 - 如果安装后没有立即生效，执行 `source ~/.zshrc`，或者重新打开终端。
@@ -1204,23 +1221,23 @@ export JOBS_DART_CLI_COMPLETION_FILE="$HOME/.dart-cli-completion/zsh-config.zsh"
 
 ```text
 公共、可复用配置     -> sync_env.txt / zsh/*.zsh
-个人函数加载器       -> zsh/custom/local.zsh -> Scripts/<脚本全名>/<脚本全名>
-list 功能菜单入口      -> Scripts/list.command/list.command / ~/.local/bin/list
-pods 本地 Pod 自检入口 -> Scripts/pods.command/pods.command / ~/.local/bin/pods
-trs 终端翻译入口      -> Scripts/trs.command/trs.command / ~/.local/bin/trs
-gif 终端 / 全屏录制入口 -> Scripts/gif.command/gif.command / ~/.local/bin/gif
-jrecord 窗口录屏入口 -> Scripts/jrecord.command/jrecord.command / ~/.local/bin/jrecord（完整包转发）
-simios iOS 模拟器补齐入口 -> Scripts/simios.command/simios.command / ~/.local/bin/simios
-m5c MD5 文件比较入口 -> Scripts/m5c.command/m5c.command / ~/.local/bin/m5c
+个人函数加载器       -> zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh -> Scripts/<脚本全名>/<脚本全名>
+list 功能菜单入口      -> Scripts/【MacOS】list.command/【MacOS】list.command / ~/.local/bin/list
+pods 本地 Pod 自检入口 -> Scripts/【MacOS】pods.command/【MacOS】pods.command / ~/.local/bin/pods
+trs 终端翻译入口      -> Scripts/【MacOS】trs.command/【MacOS】trs.command / ~/.local/bin/trs
+gif 终端 / 全屏录制入口 -> Scripts/【MacOS】gif.command/【MacOS】gif.command / ~/.local/bin/gif
+jrecord 窗口录屏入口 -> Scripts/【MacOS】jrecord.command/【MacOS】jrecord.command / ~/.local/bin/jrecord（完整包转发）
+simios iOS 模拟器补齐入口 -> Scripts/【MacOS】simios.command/【MacOS】simios.command / ~/.local/bin/simios
+m5c MD5 文件比较入口 -> Scripts/【MacOS】m5c.command/【MacOS】m5c.command / ~/.local/bin/m5c
 jsplit 文件拆分入口 -> Scripts/【MacOS】split.command/【MacOS】split.command / ~/.local/bin/jsplit
 jmerge 分卷合并入口 -> Scripts/【MacOS】merge.command/【MacOS】merge.command / ~/.local/bin/jmerge
-flat URL 编码去乱码入口 -> Scripts/flat.command/flat.command / ~/.local/bin/flat
-dq App 打开修复入口 -> Scripts/dq.command/dq.command / ~/.local/bin/dq
-df 局域网目录共享入口 -> Scripts/df.command/df.command / ~/.local/bin/df
-clr Chrome 下载记录清理入口 -> Scripts/clr.command/clr.command / ~/.local/bin/clr
-终端默认行为         -> zsh/custom/shell_behavior.zsh
-Git 路径显示修正     -> zsh/custom/git_behavior.zsh
-路径拖入解析         -> zsh/custom/path_drag_resolver.zsh
+flat URL 编码去乱码入口 -> Scripts/【MacOS】flat.command/【MacOS】flat.command / ~/.local/bin/flat
+dq App 打开修复入口 -> Scripts/【MacOS】dq.command/【MacOS】dq.command / ~/.local/bin/dq
+df 局域网目录共享入口 -> Scripts/【MacOS】df.command/【MacOS】df.command / ~/.local/bin/df
+clr Chrome 下载记录清理入口 -> Scripts/【MacOS】clr.command/【MacOS】clr.command / ~/.local/bin/clr
+终端默认行为         -> zsh/custom/【MacOS】shell_behavior.zsh/【MacOS】shell_behavior.zsh
+Git 路径显示修正     -> zsh/custom/【MacOS】git_behavior.zsh/【MacOS】git_behavior.zsh
+路径拖入解析         -> zsh/custom/【MacOS】path_drag_resolver.zsh/【MacOS】path_drag_resolver.zsh
 系统入口             -> ~/.zshrc 只保留加载入口
 实际运行目录         -> ~/.JobsMacEnv
 ```
@@ -1238,20 +1255,20 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 ├── README.md / icon.png / assets/
 ├── sync_env.txt                            # 环境变量与挂载声明
 ├── Sys/                                    # bash / zsh 启动文件模板
-├── install.command/
-│   ├── install.command                     # 把本仓配置部署到用户环境
+├── 【MacOS】install.command/
+│   ├── 【MacOS】install.command                     # 把本仓配置部署到用户环境
 │   └── README.md
 ├── scripts/                                # 源码中的功能脚本包
 │   ├── <功能名>.command/                    # 同名脚本与独立 README
-│   ├── entrypoints.command/                # source：注册短命令与分派
-│   ├── flutter_project.command/            # source：Flutter / FVM 路由
-│   ├── runtime_init.command/               # source：运行时初始化
+│   ├── 【MacOS】entrypoints.command/                # source：注册短命令与分派
+│   ├── 【MacOS】flutter_project.command/            # source：Flutter / FVM 路由
+│   ├── 【MacOS】runtime_init.command/               # source：运行时初始化
 │   ├── _lib/                               # session / path / Flutter 函数库与 Git 网络策略
 │   │   └── jobs_git_network_strategy/      # Git 动态网络入口、隔离回归和使用说明
-│   ├── update.command/Tests/               # CocoaPods 网络选择隔离回归
-│   └── repair_gem_extensions.command/Tests/ # Gem 修复集成隔离回归
+│   ├── 【MacOS】update.command/Tests/               # CocoaPods 网络选择隔离回归
+│   └── 【MacOS】repair_gem_extensions.command/Tests/ # Gem 修复集成隔离回归
 └── zsh/                                    # source 配置，不作为独立程序执行
-    ├── bootstrap.zsh / aliases.zsh / env_methods.zsh / user_mounts.zsh
+    ├── 【MacOS】bootstrap.zsh/【MacOS】bootstrap.zsh / aliases.zsh / 【MacOS】env_methods.zsh/【MacOS】env_methods.zsh / 【MacOS】user_mounts.zsh/【MacOS】user_mounts.zsh
     └── custom/                             # 本地设置、Git、拖入路径与 Shell 行为
 ```
 
@@ -1259,7 +1276,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 
 ## 十二、<span id="repository-script-flows">本仓脚本流程</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
 
-### <span id="jobs-toc-heading-37" data-jobs-toc="v2">[install.command](./install.command/install.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-37" data-jobs-toc="v2">[【MacOS】install.command](./【MacOS】install.command/【MacOS】install.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 把本仓终端配置、环境声明和短命令部署到当前用户。
 
@@ -1269,7 +1286,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 按提示决定是否替换用户启动配置，并输出重载方式。
   * 替换已有 `.zshrc` 前先备份；终端需重新加载配置后使用短命令。
 
-### <span id="jobs-toc-heading-38" data-jobs-toc="v2">[install.command](./scripts/install.command/install.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-38" data-jobs-toc="v2">[【MacOS】install.command](./scripts/【MacOS】install.command/【MacOS】install.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 通过菜单安装所选开发工具和 Jobs 工作环境依赖。
 
@@ -1279,18 +1296,20 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 缺失项安装；已有项是否升级按统一确认结果处理；未选择的项目不执行。
 * 汇总成功、跳过和失败项目，并给出日志位置。
 
-### <span id="jobs-toc-heading-39" data-jobs-toc="v2">[update.command](./scripts/update.command/update.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-39" data-jobs-toc="v2">[【MacOS】update.command](./scripts/【MacOS】update.command/【MacOS】update.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 按需更新已使用的开发工具链，并汇总每项维护结果。
 
-* 阅读说明并检查可用工具，按顺序展示系统工具、Homebrew、语言环境和依赖维护项目。
-* 逐项决定是否运行更新。
-  * 交互时回车跳过、非空输入执行；`-t` / `--trust` / `--unattended` 自动执行全部维护项，必要依赖自动准备。终端启动时集中获取一次管理员授权并在本轮保活，后续使用 `sudo -n`；后台须已有授权，受限命令明确报告未完成。
-* 执行所选维护并记录结果。
-  * CocoaPods 源按实际连通性选用并刷新对应缓存；发现 Ruby 原生扩展缺失时调用修复入口并保留备份。
-* 继续后续独立项目，最后汇总成功、跳过、失败与日志。
+**桌面入口：** 在 [Finder 扩展管理面板](../../OS@Extension/MacOS@Extension/README.md) 勾选“更新开发环境（update）”安装／更新后，系统桌面空白右键可打开独立 Terminal，无参数执行同源随包脚本。与终端直接输入 `update` 一样默认低打扰，不再使用 `-t`，不等待开场、逐项或收尾重试输入；不依赖本仓或终端 alias。这里的终端环境管理面板只部署短命令，右键入口由独立 `JobsEnvironmentUpdater` 工程管理，源码、依赖变更须另同步菜单包并更新安装。
 
-### <span id="jobs-toc-heading-40" data-jobs-toc="v2">[install_jdk17.command](./scripts/install_jdk17.command/install_jdk17.command)</span><!-- jobs-toc:heading-end -->
+* 显示说明并检查可用工具，按顺序自动维护系统工具、Homebrew、语言环境和依赖，必要依赖自动准备。
+  * 终端启动时复用或集中获取一次管理员授权并在本轮保活，后续使用 `sudo -n`；后台须已有授权，受限命令明确报告未完成。参数仅保留帮助，`-t` / `--trust` / `--unattended` 不再接受。
+* 执行维护并记录结果，已知确认点自动回答，普通子命令以输入结束运行，不自动打开手动下载页面。
+  * CocoaPods 源按实际连通性选用并刷新对应缓存；发现 Ruby 原生扩展缺失时调用修复入口并保留备份。
+  * Flutter 仅升级已配置的独立全局 SDK，沿用当前频道获取最新版本；没有则跳过且不安装，项目 FVM SDK 与绑定保持不变。
+* 继续后续独立项目，最后直接汇总成功、跳过、失败与日志，不等待收尾重试输入；未完成时返回非零，处理阻塞后重新执行 `update`。
+
+### <span id="jobs-toc-heading-40" data-jobs-toc="v2">[【MacOS】install_jdk17.command](./scripts/【MacOS】install_jdk17.command/【MacOS】install_jdk17.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 准备可被系统识别的 JDK 17。
 
@@ -1300,7 +1319,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 补齐系统识别所需的注册，再输出 Java 路径和版本。
   * 使用需要注册的 OpenJDK 方案时，会提示通过管理员权限建立系统 Java 目录链接。
 
-### <span id="jobs-toc-heading-41" data-jobs-toc="v2">[list.command](./scripts/list.command/list.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-41" data-jobs-toc="v2">[【MacOS】list.command](./scripts/【MacOS】list.command/【MacOS】list.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 把 JobsMacEnv 短命令集中为可搜索、可执行的功能菜单。
 
@@ -1310,7 +1329,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 在菜单中搜索并选择功能，转交对应脚本、格式转换或函数执行。
 * 功能结束后回车返回菜单；按 Esc 或选择退出结束，并显示日志路径。
 
-### <span id="jobs-toc-heading-42" data-jobs-toc="v2">[a.command](./scripts/a.command/a.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-42" data-jobs-toc="v2">[【MacOS】a.command](./scripts/【MacOS】a.command/【MacOS】a.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 打开当前用户的 bash_profile 配置文件。
 
@@ -1318,7 +1337,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 定位 `~/.bash_profile`，交给系统默认关联应用打开。
 * 查看终端返回结果；文件内容由用户在编辑器中修改。
 
-### <span id="jobs-toc-heading-43" data-jobs-toc="v2">[b.command](./scripts/b.command/b.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-43" data-jobs-toc="v2">[【MacOS】b.command](./scripts/【MacOS】b.command/【MacOS】b.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 打开当前用户的 zshrc 配置文件。
 
@@ -1326,7 +1345,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 定位 `~/.zshrc`，交给系统默认关联应用打开。
 * 查看终端返回结果；保存后可通过 `save` 重载配置。
 
-### <span id="jobs-toc-heading-44" data-jobs-toc="v2">[i.command](./scripts/i.command/i.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-44" data-jobs-toc="v2">[【MacOS】i.command](./scripts/【MacOS】i.command/【MacOS】i.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 打开已安装 Xcode 对应的 iOS Simulator 应用。
 
@@ -1334,7 +1353,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 按 `DEVELOPER_DIR`、当前 `xcode-select` 和常见安装目录定位应用；Xcode 27 打开 Device Hub，旧版打开 Simulator。
 * 按完整应用路径启动并记录错误；显式开发目录无效时停止，需要下载运行时则使用 `simios` 入口。
 
-### <span id="jobs-toc-heading-45" data-jobs-toc="v2">[rb.command](./scripts/rb.command/rb.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-45" data-jobs-toc="v2">[【MacOS】rb.command](./scripts/【MacOS】rb.command/【MacOS】rb.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 重新启动登录 Shell，重新载入启动配置。
 
@@ -1342,7 +1361,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 取得当前 `SHELL`，以登录模式替换当前执行进程。
 * 通过已注册的终端函数调用时作用于当前终端；独立运行文件时作用于脚本进程。
 
-### <span id="jobs-toc-heading-46" data-jobs-toc="v2">[save.command](./scripts/save.command/save.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-46" data-jobs-toc="v2">[【MacOS】save.command](./scripts/【MacOS】save.command/【MacOS】save.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 重新载入常见 bash 和 zsh 用户配置。
 
@@ -1351,7 +1370,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 不存在的文件给出提示并跳过。
 * 通过已注册的终端函数调用时更新当前会话；独立运行文件只更新脚本进程。
 
-### <span id="jobs-toc-heading-47" data-jobs-toc="v2">[x.command](./scripts/x.command/x.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-47" data-jobs-toc="v2">[【MacOS】x.command](./scripts/【MacOS】x.command/【MacOS】x.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 给指定文件增加执行权限并立即运行。
 
@@ -1360,7 +1379,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 路径不存在或为目录时停止，不继续执行。
 * 对目标执行 `chmod +x`，随后立即调用该文件并返回执行结果。
 
-### <span id="jobs-toc-heading-48" data-jobs-toc="v2">[zz.command](./scripts/zz.command/zz.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-48" data-jobs-toc="v2">[【MacOS】zz.command](./scripts/【MacOS】zz.command/【MacOS】zz.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 解析拖入路径并切换到真实目录。
 
@@ -1369,7 +1388,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 切换目录并输出当前位置。
   * 目标为文件时进入其父目录；通过已注册函数调用才会改变当前终端目录。
 
-### <span id="jobs-toc-heading-49" data-jobs-toc="v2">[shell.command](./scripts/shell.command/shell.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-49" data-jobs-toc="v2">[【MacOS】shell.command](./scripts/【MacOS】shell.command/【MacOS】shell.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 从本机可用 Shell 中选择并设置默认登录 Shell。
 
@@ -1378,7 +1397,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 取消选择则结束；菜单依赖不可用时使用文本选择。
 * 调用 `chsh` 修改当前用户的默认登录 Shell，按系统要求完成验证并查看结果。
 
-### <span id="jobs-toc-heading-50" data-jobs-toc="v2">[d.command](./scripts/d.command/d.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-50" data-jobs-toc="v2">[【MacOS】d.command](./scripts/【MacOS】d.command/【MacOS】d.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 进入选择的 Flutter 项目目录。
 
@@ -1386,7 +1405,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 识别当前或提示选择有效 Flutter 项目，确认目标目录。
 * 切换并输出路径；通过已注册函数调用时改变当前终端目录。
 
-### <span id="jobs-toc-heading-51" data-jobs-toc="v2">[check1.command](./scripts/check1.command/check1.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-51" data-jobs-toc="v2">[【MacOS】check1.command](./scripts/【MacOS】check1.command/【MacOS】check1.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 显示 Dart、FVM 和 Flutter 的命令路径与版本。
 
@@ -1394,7 +1413,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 逐项查询 Dart、FVM 与 Flutter 的可用路径和版本。
 * 区分 Flutter 函数入口和外部命令，打印诊断结果供排查。
 
-### <span id="jobs-toc-heading-52" data-jobs-toc="v2">[check.command](./scripts/check.command/check.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-52" data-jobs-toc="v2">[【MacOS】check.command](./scripts/【MacOS】check.command/【MacOS】check.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 将所选项目切到指定 FVM 版本，并运行 Flutter Doctor。
 
@@ -1403,7 +1422,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 执行 `fvm use 3.24.5 --force`，会修改项目的 Flutter 版本配置。
 * 运行 Flutter Doctor 详细检查并输出结果。
 
-### <span id="jobs-toc-heading-53" data-jobs-toc="v2">[c.command](./scripts/c.command/c.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-53" data-jobs-toc="v2">[【MacOS】c.command](./scripts/【MacOS】c.command/【MacOS】c.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 为所选 Flutter 项目修复 jenv / JDK 17 选择，再执行环境检查。
 
@@ -1412,7 +1431,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 为项目及当前执行会话选择 JDK 17，打印 Java 信息。
 * 继续调用 `check` 流程，会把项目 FVM 版本切为 `3.24.5` 并运行 Doctor。
 
-### <span id="jobs-toc-heading-54" data-jobs-toc="v2">[fixfvm.command](./scripts/fixfvm.command/fixfvm.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-54" data-jobs-toc="v2">[【MacOS】fixfvm.command](./scripts/【MacOS】fixfvm.command/【MacOS】fixfvm.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 清理损坏的 Dart 全局 FVM 安装并重新激活。
 
@@ -1420,7 +1439,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 尝试停用全局 FVM，清除对应可执行入口和全局包缓存。
 * 通过当前 Dart 重新激活 FVM，刷新命令缓存并输出结果。
 
-### <span id="jobs-toc-heading-55" data-jobs-toc="v2">[buildCheck.command](./scripts/buildCheck.command/buildCheck.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-55" data-jobs-toc="v2">[【MacOS】buildCheck.command](./scripts/【MacOS】buildCheck.command/【MacOS】buildCheck.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 按选择执行 Flutter 构建前的清理、依赖获取和 Doctor 检查。
 
@@ -1430,7 +1449,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 依次处理所选检查并报告状态。
   * 锁文件比 `pubspec.yaml` 新时可跳过依赖获取；显式强制选项会重新获取。
 
-### <span id="jobs-toc-heading-56" data-jobs-toc="v2">[apk.command](./scripts/apk.command/apk.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-56" data-jobs-toc="v2">[【MacOS】apk.command](./scripts/【MacOS】apk.command/【MacOS】apk.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 完成构建前检查后生成 Flutter Android release APK。
 
@@ -1440,7 +1459,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 存在 `plugins/htprotect` 时在该目录获取依赖，否则跳过。
 * 执行 release APK 构建，成功后打开 `build/app/outputs` 查看产物。
 
-### <span id="jobs-toc-heading-57" data-jobs-toc="v2">[ipa.command](./scripts/ipa.command/ipa.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-57" data-jobs-toc="v2">[【MacOS】ipa.command](./scripts/【MacOS】ipa.command/【MacOS】ipa.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 完成构建前检查后生成 Flutter iOS release IPA。
 
@@ -1448,7 +1467,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 确认后续使用的 Flutter 项目路径并进入项目。
 * 执行 release IPA 构建，成功后打开 `build/ios/ipa` 查看产物。
 
-### <span id="jobs-toc-heading-58" data-jobs-toc="v2">[config.command](./scripts/config.command/config.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-58" data-jobs-toc="v2">[【MacOS】config.command](./scripts/【MacOS】config.command/【MacOS】config.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 使用编辑器打开指定用户配置文件。
 
@@ -1457,7 +1476,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 无参数使用 `~/.zshrc`；相对路径放在用户目录下，绝对路径保持原值。
 * 优先使用已安装 Xcode 打开，未安装则使用 TextEdit；修改由用户保存。
 
-### <span id="jobs-toc-heading-59" data-jobs-toc="v2">[code.command](./scripts/code.command/code.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-59" data-jobs-toc="v2">[【MacOS】code.command](./scripts/【MacOS】code.command/【MacOS】code.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 发现本机 Visual Studio Code 命令并转交参数。
 
@@ -1466,7 +1485,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 把原参数交给找到的命令执行。
   * 找不到可用命令时返回 `127` 并提示，不自动安装编辑器。
 
-### <span id="jobs-toc-heading-60" data-jobs-toc="v2">[codemap.command](./scripts/codemap.command/codemap.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-60" data-jobs-toc="v2">[【MacOS】codemap.command](./scripts/【MacOS】codemap.command/【MacOS】codemap.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 为当前目录或指定多个目录建立并校验 CodeGraph 代码地图。
 
@@ -1476,7 +1495,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 未安装时停止并提示，不隐式安装；单个目录失败会记录后继续其它目标。
 * 校验索引状态并汇总每个目录结果；存在失败时返回失败状态。
 
-### <span id="jobs-toc-heading-61" data-jobs-toc="v2">[clean.command](./scripts/clean.command/clean.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-61" data-jobs-toc="v2">[【MacOS】clean.command](./scripts/【MacOS】clean.command/【MacOS】clean.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 清理终端历史、会话缓存和用户缓存，处理失效开发 App 与实体已缺失的 iOS 模拟器登记。
 
@@ -1487,7 +1506,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 缓存路径按脚本边界检查；没有 Homebrew 时跳过 `brew cleanup`。
 * 恢复历史记录设置，清空终端可见内容和滚动区，输出清理结果。
 
-### <span id="jobs-toc-heading-62" data-jobs-toc="v2">[clr.command](./scripts/clr.command/clr.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-62" data-jobs-toc="v2">[【MacOS】clr.command](./scripts/【MacOS】clr.command/【MacOS】clr.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 清空 Chrome 下载记录，保留真实下载文件。
 
@@ -1498,7 +1517,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * `--open-only` 只打开页面；`--legacy-ui` 使用界面回退；扩展 ID 可自动发现或通过 `--extension-id` 指定。
 * 显示清理结果，实际下载文件保留。
 
-### <span id="jobs-toc-heading-63" data-jobs-toc="v2">[dq.command](./scripts/dq.command/dq.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-63" data-jobs-toc="v2">[【MacOS】dq.command](./scripts/【MacOS】dq.command/【MacOS】dq.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 清理所选文件或 App 的 macOS quarantine 隔离标记。
 
@@ -1508,7 +1527,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * `--dry-run` 只预览；`--open` 在处理后尝试打开目标。
 * 汇总处理结果，不修改系统全局 Gatekeeper 设置。
 
-### <span id="jobs-toc-heading-64" data-jobs-toc="v2">[df.command](./scripts/df.command/df.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-64" data-jobs-toc="v2">[【MacOS】df.command](./scripts/【MacOS】df.command/【MacOS】df.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 用 dufs 与 Caddy 临时共享所选本地目录。
 
@@ -1519,7 +1538,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 结束共享并清理本次受管进程和临时配置。
   * 指定保留配置选项时按该模式保留。
 
-### <span id="jobs-toc-heading-65" data-jobs-toc="v2">[download.command](./scripts/download.command/download.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-65" data-jobs-toc="v2">[【MacOS】download.command](./scripts/【MacOS】download.command/【MacOS】download.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 下载指定媒体地址，并按配置在不同下载后端间处理失败。
 
@@ -1529,7 +1548,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * yt-dlp 失败且已配置 cobalt API 时才自动回退；强制 cobalt 模式也必须提供可用 API 地址。
 * 输出保存位置或失败原因，供用户检查产物。
 
-### <span id="jobs-toc-heading-66" data-jobs-toc="v2">[to.command](./scripts/to.command/to.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-66" data-jobs-toc="v2">[【MacOS】to.command](./scripts/【MacOS】to.command/【MacOS】to.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 用 FFmpeg 将所选媒体转换为指定格式。
 
@@ -1539,7 +1558,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 回车保留原文件名；目标重名时增加后缀，避免覆盖已有文件。
 * 输出每项转换结果与产物路径。
 
-### <span id="jobs-toc-heading-67" data-jobs-toc="v2">[gif.command](./scripts/gif.command/gif.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-67" data-jobs-toc="v2">[【MacOS】gif.command](./scripts/【MacOS】gif.command/【MacOS】gif.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 录制终端或全屏，并导出 GIF / MP4。
 
@@ -1549,7 +1568,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 开始终端或屏幕录制，按提示用 `Ctrl+C` 结束。
 * 转换并保存 GIF / MP4，输出录制文件和产物位置。
 
-### <span id="jobs-toc-heading-68" data-jobs-toc="v2">[jrecord.command](./scripts/jrecord.command/jrecord.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-68" data-jobs-toc="v2">[【MacOS】jrecord.command](./scripts/【MacOS】jrecord.command/【MacOS】jrecord.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 通过 `jrecord` 从终端精确录制浏览器或应用窗口，无需框选屏幕区域。
 
@@ -1557,9 +1576,9 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 - 默认在浏览器窗口列表中选择目标，也可查看全部窗口；窗口、配置和执行确认均支持返回或取消。开始前复核窗口 ID、进程及应用身份，目标失效即停止。
 - 保存地址确认后显示可鼠标穿透、不抢焦点的 5 秒倒计时；提示层移除后才开始采集，倒计时不进入最终视频。
 - 默认无声音，按需选择系统音频；保存独立 MP4，已有输出不覆盖。按 Ctrl+C 停止并封装当前录制，失败如实保留诊断。
-- `--doctor` 只体检，`--prepare` 只准备环境；`--list`、`--window-id` 及录制参数见[功能说明](./scripts/jrecord.command/README.md)。环境同步只复制完整包和注册转发入口，不执行依赖安装、编译或录屏。
+- `--doctor` 只体检，`--prepare` 只准备环境；`--list`、`--window-id` 及录制参数见[功能说明](./scripts/【MacOS】jrecord.command/README.md)。环境同步只复制完整包和注册转发入口，不执行依赖安装、编译或录屏。
 
-### <span id="jobs-toc-heading-69" data-jobs-toc="v2">[m5c.command](./scripts/m5c.command/m5c.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-69" data-jobs-toc="v2">[【MacOS】m5c.command](./scripts/【MacOS】m5c.command/【MacOS】m5c.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 比较两个文件的 MD5 摘要，辅助检查内容是否相同。
 
@@ -1585,7 +1604,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 - 按数字卷号写入候选文件，核对大小、SHA-256 及分卷状态后发布；已有完整文件不覆盖。
 - 默认保留分卷，仅精确输入 `YES` 才删除本组合并过的分卷；不递归删除目录。
 
-### <span id="jobs-toc-heading-72" data-jobs-toc="v2">[flat.command](./scripts/flat.command/flat.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-72" data-jobs-toc="v2">[【MacOS】flat.command](./scripts/【MacOS】flat.command/【MacOS】flat.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 解码 URL 百分号编码，并复制解码结果。
 
@@ -1594,7 +1613,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 使用 `--plus` 时额外把加号当作空格。
 * 显示结果并复制到剪贴板；交互模式可继续输入或退出。
 
-### <span id="jobs-toc-heading-73" data-jobs-toc="v2">[decode.command](./scripts/decode.command/decode.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-73" data-jobs-toc="v2">[【MacOS】decode.command](./scripts/【MacOS】decode.command/【MacOS】decode.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 交互式解码 URL 编码文本并复制结果。
 
@@ -1603,7 +1622,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 处理剪贴板和下一次输入。
   * 解码结果非空时自动复制；输入 `q` 结束。
 
-### <span id="jobs-toc-heading-74" data-jobs-toc="v2">[cor.command](./scripts/cor.command/cor.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-74" data-jobs-toc="v2">[【MacOS】cor.command](./scripts/【MacOS】cor.command/【MacOS】cor.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 把输入颜色转换为常用 HEX、RGB 和 RGBA 表达。
 
@@ -1612,7 +1631,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 输出各格式结果和终端色块。
   * 终端按能力使用真彩色或 256 色；非法输入给出提示，交互模式可继续或退出。
 
-### <span id="jobs-toc-heading-75" data-jobs-toc="v2">[ts.command](./scripts/ts.command/ts.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-75" data-jobs-toc="v2">[【MacOS】ts.command](./scripts/【MacOS】ts.command/【MacOS】ts.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 把不同精度的 Unix 时间戳转换为可读日期时间。
 
@@ -1621,7 +1640,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 默认使用系统时区，也可通过可用的菜单选择其它时区。
 * 输出完整时间、星期和时区偏移；按 Esc 结束。
 
-### <span id="jobs-toc-heading-76" data-jobs-toc="v2">[trs.command](./scripts/trs.command/trs.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-76" data-jobs-toc="v2">[【MacOS】trs.command](./scripts/【MacOS】trs.command/【MacOS】trs.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 通过 macOS 原生翻译能力交互翻译文本。
 
@@ -1630,7 +1649,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * 单个空格进入设置；中文保持为固定的一侧。
 * 调用系统翻译并展示结果，可继续输入或退出。
 
-### <span id="jobs-toc-heading-77" data-jobs-toc="v2">[tts.command](./scripts/tts.command/tts.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-77" data-jobs-toc="v2">[【MacOS】tts.command](./scripts/【MacOS】tts.command/【MacOS】tts.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 选择本地语音引擎，将输入文本生成为可播放语音。
 
@@ -1641,7 +1660,17 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
   * Supertonic 的中文输入按脚本策略使用 macOS `say` 回退。
 * 显示生成和播放结果，可继续输入或结束。
 
-### <span id="jobs-toc-heading-78" data-jobs-toc="v2">[simios.command](./scripts/simios.command/simios.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-78" data-jobs-toc="v2">[【MacOS】orc.command](./scripts/【MacOS】orc.command/【MacOS】orc.command)</span><!-- jobs-toc:heading-end -->
+
+> **目的：** 在终端使用 Indra OCR 识别图片／PDF，工具和模型就绪后支持离线处理。
+
+- 执行 `orc`、`ORC` 或其它大小写组合，阅读内置说明并确认；无参数时输入或拖入待识别路径。
+- 首次识别按需准备独立虚拟环境并安装 `indra-ocr`；`--install` 只准备工具，不预下载模型。
+  - 首次识别会获取缺失模型；预先完成依赖与模型准备后，可用 `--offline` 禁止联网获取。
+- 将文件及原生 CLI 选项传给 Indra OCR，识别内容写到标准输出，提示与日志写到标准错误。
+- 保留第三方 CLI 的实际退出码；安装条件、输出格式、模型目录与离线限制见 [完整说明](./scripts/【MacOS】orc.command/README.md)。
+
+### <span id="jobs-toc-heading-79" data-jobs-toc="v2">[【MacOS】simios.command](./scripts/【MacOS】simios.command/【MacOS】simios.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 检查 Xcode 环境并下载或补齐 iOS Simulator Runtime。
 
@@ -1651,7 +1680,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 列出现有运行时，再按选择使用 `xcodebuild` 下载 iOS 运行时。
 * 复查并汇总结果；此入口处理运行时准备，不构建业务 App。
 
-### <span id="jobs-toc-heading-79" data-jobs-toc="v2">[pods.command](./scripts/pods.command/pods.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-80" data-jobs-toc="v2">[【MacOS】pods.command](./scripts/【MacOS】pods.command/【MacOS】pods.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 逐项检查本地 Pod 的 podspec 校验及编译结果。
 
@@ -1660,7 +1689,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 在独立检查环境执行 lint / 编译，保存编译输出并显示结论。
 * 根据结果选择重试、下一个 Pod、更换根目录或退出。
 
-### <span id="jobs-toc-heading-80" data-jobs-toc="v2">[repair_gem_extensions.command](./scripts/repair_gem_extensions.command/repair_gem_extensions.command)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-81" data-jobs-toc="v2">[【MacOS】repair_gem_extensions.command](./scripts/【MacOS】repair_gem_extensions.command/【MacOS】repair_gem_extensions.command)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 检查或修复当前 CocoaPods Ruby 环境中缺失的原生 Gem 扩展。
 
@@ -1671,7 +1700,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 汇总每个目标的修复结果。
   * 构建或加载失败时恢复对应备份，不通过整体升级版本规避错误。
 
-### <span id="jobs-toc-heading-81" data-jobs-toc="v2">[cocoapods_network_tests.zsh](./scripts/update.command/Tests/cocoapods_network_tests.zsh)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-82" data-jobs-toc="v2">[【MacOS】cocoapods_network_tests.zsh/【MacOS】cocoapods_network_tests.zsh](./scripts/【MacOS】update.command/Tests/【MacOS】cocoapods_network_tests.zsh/【MacOS】cocoapods_network_tests.zsh)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 在隔离环境回归验证更新脚本的 CocoaPods 网络源选择。
 
@@ -1679,7 +1708,7 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 抽取更新脚本相关函数，验证源选择、对应缓存刷新、目录归属及失败处理。
 * 汇总断言，失败时返回非零状态，结束时清理本次临时文件和进程。
 
-### <span id="jobs-toc-heading-82" data-jobs-toc="v2">[update_integration_test.zsh](./scripts/repair_gem_extensions.command/Tests/update_integration_test.zsh)</span><!-- jobs-toc:heading-end -->
+### <span id="jobs-toc-heading-83" data-jobs-toc="v2">[【MacOS】update_integration_test.zsh/【MacOS】update_integration_test.zsh](./scripts/【MacOS】repair_gem_extensions.command/Tests/【MacOS】update_integration_test.zsh/【MacOS】update_integration_test.zsh)</span><!-- jobs-toc:heading-end -->
 
 > **目的：** 在隔离环境回归验证 Gem 修复与更新脚本的集成行为。
 
@@ -1687,12 +1716,12 @@ Git 路径显示修正     -> zsh/custom/git_behavior.zsh
 * 验证修复顺序、错误传播、独立交互、颜色输出及终端条件。
 * 汇总断言，失败时返回非零状态，并清理本次临时资源。
 
-## <span id="jobs-toc-heading-83" data-jobs-toc="v2">十三、启动提示与模块加载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-84" data-jobs-toc="v2">十三、启动提示与模块加载 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 如果打开终端看到类似 `JobsMacEnv: Scripts 目录不存在` 或 `入口脚本缺失` 的提示，先检查用户环境中的 `Scripts/` 是否完整，再从本仓重新执行安装同步入口：
 
 ```zsh
-zsh ./install.command/install.command
+zsh ./【MacOS】install.command/【MacOS】install.command
 ```
 
 安装完成后重新打开终端，或者执行：
@@ -1701,21 +1730,21 @@ zsh ./install.command/install.command
 source ~/.zshrc
 ```
 
-- `zsh/custom/local.zsh` 按顺序加载 `runtime_init.command` 与 `entrypoints.command`。前者初始化已存在的 jenv / rbenv 和 Dart 补全，后者注册短命令。
+- `zsh/custom/【MacOS】local.zsh/【MacOS】local.zsh` 按顺序加载 `【MacOS】runtime_init.command` 与 `【MacOS】entrypoints.command`。前者初始化已存在的 jenv / rbenv 和 Dart 补全，后者注册短命令。
 - 标准运行路径为用户环境中的 `Scripts/<脚本全名>/<脚本全名>`；短命令解析器也接受 `Scripts/<脚本全名>` 的平铺文件。源码目录小写 `scripts/` 不等于用户运行目录。
 - `d`、`zz`、`save`、`rb` 等命令通过当前 Shell 的函数包装执行，目录切换或重载才会影响当前终端；单独启动子进程不能反向修改父 Shell。
-- `flutter_project.command` 是函数模块；是否加载由 `USE_FVM` 控制，不生成独立 `flutter` 可执行包装。`install_jdk17.command` 可直接运行，不生成名为 `jdk17` 的短命令。
-- `clean` 的历史清理、失效 App 图标处理和 Homebrew 清理范围见其[独立说明](./scripts/clean.command/README.md)。运行自述内置于各脚本，README 不参与运行时加载。
+- `【MacOS】flutter_project.command` 是函数模块；是否加载由 `USE_FVM` 控制，不生成独立 `flutter` 可执行包装。`【MacOS】install_jdk17.command` 可直接运行，不生成名为 `jdk17` 的短命令。
+- `clean` 的历史清理、失效 App 图标处理和 Homebrew 清理范围见其[独立说明](./scripts/【MacOS】clean.command/README.md)。运行自述内置于各脚本，README 不参与运行时加载。
 
-## <span id="jobs-toc-heading-84" data-jobs-toc="v2">十四、命令菜单与媒体转换 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-85" data-jobs-toc="v2">十四、命令菜单与媒体转换 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
-`list` 是可搜索的命令总菜单。展示内置自述并确认后进入 [**fzf**](https://github.com/junegunn/fzf)；`--plain` / `-p` 直接显示文字清单，依赖不可用或跳过安装时也回退为清单。菜单选择后执行相应功能，结束后可返回继续选择。完整入口见 [scripts/README.md](./scripts/README.md)，菜单参数和键位见 [list 说明](./scripts/list.command/README.md)。
+`list` 是可搜索的命令总菜单。展示内置自述并确认后进入 [**fzf**](https://github.com/junegunn/fzf)；`--plain` / `-p` 直接显示文字清单，依赖不可用或跳过安装时也回退为清单。菜单选择后执行相应功能，结束后可返回继续选择。完整入口见 [scripts/README.md](./scripts/README.md)，菜单参数和键位见 [list 说明](./scripts/【MacOS】list.command/README.md)。
 
-媒体转换统一由 [to.command](./scripts/to.command/README.md) 处理。`to mp4 文件`、`mp4 文件`、`mov 文件`、`webm 文件`、`mp3 文件` 等入口共用同一实现。菜单分别提供 `to`、`mp4`、`mov`、`webm`、`mkv`、`avi`、`m4v`、`mp3`、`m4a`、`aac`、`wav`、`flac`、`ogg`、`opus`、`to gif`；选择格式后继续拖入或输入来源路径。输出保存在源目录，同名目标增加后缀，具体参数、跳过和失败处理见独立说明。
+媒体转换统一由 [【MacOS】to.command](./scripts/【MacOS】to.command/README.md) 处理。`to mp4 文件`、`mp4 文件`、`mov 文件`、`webm 文件`、`mp3 文件` 等入口共用同一实现。菜单分别提供 `to`、`mp4`、`mov`、`webm`、`mkv`、`avi`、`m4v`、`mp3`、`m4a`、`aac`、`wav`、`flac`、`ogg`、`opus`、`to gif`；选择格式后继续拖入或输入来源路径。输出保存在源目录，同名目标增加后缀，具体参数、跳过和失败处理见独立说明。
 
 ---
 
-## <span id="jobs-toc-heading-85" data-jobs-toc="v2">十五、clr：清空 Chrome 下载历史 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
+## <span id="jobs-toc-heading-86" data-jobs-toc="v2">十五、clr：清空 Chrome 下载历史 <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a></span><!-- jobs-toc:heading-end -->
 
 运行命令：
 
@@ -1733,6 +1762,37 @@ clr --install-extension
 
 原因：Chrome 没有给普通 macOS 命令行提供稳定的清空下载历史接口；本工具通过本地 Chrome 扩展调用 Chrome downloads API 完成清理。
 
-扩展部署、命令参数和排查方法见 [clr 功能说明](./scripts/clr.command/README.md)，扩展本身的加载与权限说明见 [chrome-extension/README.md](./scripts/clr.command/chrome-extension/README.md)。
+扩展部署、命令参数和排查方法见 [clr 功能说明](./scripts/【MacOS】clr.command/README.md)，扩展本身的加载与权限说明见 [chrome-extension/README.md](./scripts/【MacOS】clr.command/chrome-extension/README.md)。
+
+## 十六、<span id="selective-environment-manager">分项安装与卸载</span> <a href="#前言" style="font-size:17px; color:green;"><b>🔼</b></a> <a href="#🔚" style="font-size:17px; color:green;"><b>🔽</b></a>
+
+双击根目录的 `【MacOS】🌍环境配置管理.app`，勾选需要的配置或命令，查看计划后执行安装或卸载。[面板说明](./安装面板/README.md)包含界面、主题、语言、日志、构建与随包资源边界。原 `【MacOS】install.command/【MacOS】install.command` 和 `【MacOS】install（快捷入口）.command/【MacOS】install（快捷入口）.command` 的终端入口继续保留；它们与分项后端不要同时运行。
+
+分项目录包含基础环境、交互与 Git 行为、模块加载器、命令函数加载器、Shell 入口和公共脚本支持；终端命令各自独立可选。媒体转换组件同时注册各格式别名；录屏保留完整 Core 源码；Gem 修复器和全局 Markdown 过滤器也可独立部署。2026-11-16 源码后端与重建 App 均提供 50 个组件（6 个配置／支持组件、44 个命令组件），包括 `cmd-orc`；App 内后端与功能资源已按当前源码逐文件核对。分项安装只部署 OCR 入口与源码，识别依赖及模型仍由业务入口按需准备；面板文件回归和 OCR 业务实跑的范围分别记录在资产表。
+
+安装配置和命令仅部署文件，不运行其业务，不自动安装 Homebrew、SDK、模型，不执行清理、录屏、工程构建、Git 过滤器安装或网络代理变更。所选命令自动补齐需要的公共配置和加载器；未选命令不会随该次操作全部安装。
+
+卸载使用逐文件原件备份和安装后指纹：新建对象核验后移除，原有对象恢复原件。用户后来修改、未选依赖、未知共享引用、残缺收据和历史无收据安装均保留并报告未完成。若原终端安装已有环境，面板安装会备份当前状态，反安装恢复到这次面板安装之前；不能把它解释为能还原未知的更早系统原点。SDK、模型、用户数据、缓存、恢复材料和空目录保留。
+
+### <span id="jobs-toc-heading-88" data-jobs-toc="v2">[【MacOS】环境管理后端.command](./【MacOS】环境管理后端.command/【MacOS】环境管理后端.command)</span><!-- jobs-toc:heading-end -->
+
+> **目的：** 以同一生命周期实现为图形面板、自动化和终端卸载提供按组件部署与恢复。
+
+- 从自身所在目录解析完整配置与脚本来源，查询实时组件和收据状态。
+- `--dry-run` 生成只读计划；真实操作需要显式 `--yes`，先备份、复核再发布。
+  - 选中命令自动补齐所需公共支持，未知 ID 或计划后的文件变化会停止。
+  - 卸载按反向依赖处理，失败后仍存活的配置或命令引用会保留共享模块。
+- 输出逐项事件、纯文本日志与真实退出码，备份及恢复材料位于用户资源库 `Application Support` 的 `JobsMacEnvManager`。
+
+### <span id="jobs-toc-heading-89" data-jobs-toc="v2">[【MacOS】卸载终端环境.command](./【MacOS】卸载终端环境.command/【MacOS】卸载终端环境.command)</span><!-- jobs-toc:heading-end -->
+
+> **目的：** 在保留终端安装方式的同时，提供可多选的终端反安装入口。
+
+- 先展示范围与取消方式，检查可运行的 fzf 和完整管理后端。
+- 用方向键／Tab 移动、回车勾选配置或命令、空格形成计划；提供取消、全选、清空操作行，空选不能隐式取高亮项。
+- 最终确认层 ← 返回组件选择并保留勾选；组件层 Esc／← 取消本轮。
+- 最终确认默认取消，明确选择执行后转交统一后端恢复，并传递非零失败或未完成状态。
+
+后端有[独立临时 HOME 文件回归](./【MacOS】环境管理后端.command/Tests/【MacOS】环境后端回归.zsh/README.md)，覆盖全部组件、原件与权限恢复、用户修改、未知共享引用、源码迁移和计划后并发变化；真实用户安装／卸载、业务工具与界面按键另行验收。
 
 <a id="🔚" href="#前言" style="font-size:17px; color:green; font-weight:bold;">我是有底线的➤点我回到首页</a>

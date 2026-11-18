@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Jobs Clear Chrome Downloads",
+  "version": "1.0.3",
+  "description": "Clear Chrome download history without deleting local files.",
+  "permissions": [
+    "downloads"
+  ],
+  "action": {
+    "default_title": "Clear Chrome downloads"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "clear-download-history": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
+      },
+      "description": "Clear Chrome download history"
+    }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3S09xpt4B73vCWFVhd2azGUia+BbB1KEVgC609S+mYzFSTNF1jlRGgw2eqnwLd/4WL5FxeDHKLjQS+lnjXvYTWohRDEyEJlHeq6VBFX0V+YLfFMsHFQu3sFeqkcMi5LteL7bscylwFUHhMUVd8yeNFQykAhRH4WV50VCymYzo7nWL83KMkkGqprFCMkDBZe8cVmjNEFuNlIjbPExd2UIk2YNI+egbwkeBbZIMa2JZ9gK7bfMeG6n5X8FnYgqiaGafd1xZFcSwKdEAY7jwSIpKW86t284MBiznmK9x8tIAzDmlDa/ynWN2sPBkeKyEsANpL3LuDkDtYSHG3lK0uzvtQIDAQAB"
+}
